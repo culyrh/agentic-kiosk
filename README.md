@@ -1,4 +1,11 @@
-## 환경 설정
+# sadollar-ai — feat/audio-processing
+
+키오스크의 음성 처리(STT/TTS) 모듈 구현 브랜치입니다.
+
+- **STT**: 허깅페이스 Whisper 모델 로컬 추론 (faster-whisper)
+- **TTS**: 구현 예정
+
+---
 
 ### 1. 가상환경 생성 및 활성화
 
@@ -18,11 +25,41 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 실행
+<br>
+
+## STT (음성 인식)
+
+허깅페이스 허브에서 Whisper 모델을 로컬로 다운로드해 추론합니다. OpenAI API를 사용하지 않습니다.
+
+- 모델: `Systran/faster-whisper-{size}`
+- 처음 실행 시 자동 다운로드, 이후 캐시에서 로드
+
+### 모델 크기 선택
+
+| 모델 | 다운로드 크기 | 속도 | 한국어 정확도 |
+|------|-------------|------|--------------|
+| small | ~500MB | 빠름 | 보통 |
+| medium | ~1.5GB | 중간 | 좋음 |
+| large-v3 | ~3GB | 느림 | 매우 좋음 |
+
+### 실행
 
 ```bash
-uvicorn api.main:app --reload
+# 기본 (medium 모델)
+python voice/stt.py tests/뉴스녹음.m4a
+
+# 모델 크기 지정
+python voice/stt.py tests/뉴스녹음.m4a small
+python voice/stt.py tests/뉴스녹음.m4a large-v3
 ```
+
+결과는 터미널에 출력되고 `tests/results/` 에 텍스트 파일로 저장됩니다.
+
+```
+tests/results/뉴스녹음_medium_20260326_210639.txt
+```
+
+<br>
 
 ## 프로젝트 구조
 
