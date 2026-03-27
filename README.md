@@ -41,6 +41,7 @@ pip install -r requirements.txt
 | small | ~500MB | 빠름 | 보통 |
 | medium | ~1.5GB | 중간 | 좋음 |
 | large-v3 | ~3GB | 느림 | 매우 좋음 |
+| large-v3-turbo | ~1.6GB | 중간 | 매우 좋음 |
 
 ### 실행
 
@@ -51,6 +52,7 @@ python voice/stt.py tests/뉴스녹음.m4a
 # 모델 크기 지정
 python voice/stt.py tests/뉴스녹음.m4a small
 python voice/stt.py tests/뉴스녹음.m4a large-v3
+python voice/stt.py tests/뉴스녹음.m4a large-v3-turbo
 ```
 
 결과는 터미널에 출력되고 `tests/results/` 에 텍스트 파일로 저장됩니다.
