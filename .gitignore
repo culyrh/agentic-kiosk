@@ -4,4 +4,6 @@ __pycache__/
 .env
 *.wav
 *.mp3
+
+data/chroma_db/
 tests/notes.md

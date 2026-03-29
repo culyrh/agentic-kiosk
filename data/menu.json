@@ -1,0 +1,122 @@
+
+
+[
+  {
+    "id": 1,
+    "name": "핫크리스피버거",
+    "category": "버거",
+    "price": 5900,
+    "spicy_level": 2,
+    "description": "매콤한 치킨 패티가 들어간 버거",
+    "tags": ["매운", "치킨", "바삭"]
+  },
+  {
+    "id": 2,
+    "name": "불고기버거",
+    "category": "버거",
+    "price": 4500,
+    "spicy_level": 0,
+    "description": "달콤한 불고기 소스가 특징",
+    "tags": ["불고기", "달콤", "베스트"]
+  },
+  {
+    "id": 3,
+    "name": "양념감자",
+    "category": "사이드",
+    "price": 2500,
+    "spicy_level": 1,
+    "description": "시즈닝이 뿌려진 감자튀김",
+    "tags": ["가벼운음식", "튀김", "짭잘한", "간식"]
+  },
+    {
+    "id": 4,
+    "name": "치즈버거",
+    "category": "버거",
+    "price": 4800,
+    "spicy_level": 0,
+    "description": "고소한 치즈가 듬뿍 들어간 버거",
+    "tags": ["치즈", "고소", "기본"]
+  },
+  {
+    "id": 5,
+    "name": "더블치즈버거",
+    "category": "버거",
+    "price": 6500,
+    "spicy_level": 0,
+    "description": "패티와 치즈가 두 배로 들어간 버거",
+    "tags": ["치즈", "푸짐", "고소"]
+  },
+  {
+    "id": 6,
+    "name": "새우버거",
+    "category": "버거",
+    "price": 5200,
+    "spicy_level": 0,
+    "description": "바삭한 새우 패티가 들어간 버거",
+    "tags": ["새우", "바삭", "해산물"]
+  },
+  {
+    "id": 7,
+    "name": "핫치킨버거",
+    "category": "버거",
+    "price": 5700,
+    "spicy_level": 3,
+    "description": "매운 양념이 더해진 치킨 버거",
+    "tags": ["매운", "치킨", "강한맛"]
+  },
+  {
+    "id": 8,
+    "name": "감자튀김",
+    "category": "사이드",
+    "price": 2000,
+    "spicy_level": 0,
+    "description": "바삭하게 튀긴 기본 감자튀김",
+    "tags": ["기본", "바삭", "간식"]
+  },
+  {
+    "id": 9,
+    "name": "치즈스틱",
+    "category": "사이드",
+    "price": 3000,
+    "spicy_level": 0,
+    "description": "쭉 늘어나는 치즈가 들어간 튀김",
+    "tags": ["치즈", "간식", "인기"]
+  },
+  {
+    "id": 10,
+    "name": "치킨너겟",
+    "category": "사이드",
+    "price": 3500,
+    "spicy_level": 1,
+    "description": "한입 크기의 바삭한 치킨",
+    "tags": ["치킨", "간식", "바삭"]
+  },
+  {
+    "id": 11,
+    "name": "콜라",
+    "category": "음료",
+    "price": 1500,
+    "spicy_level": 0,
+    "description": "시원한 탄산음료",
+    "tags": ["음료", "탄산", "기본"]
+  },
+  {
+    "id": 12,
+    "name": "사이다",
+    "category": "음료",
+    "price": 1500,
+    "spicy_level": 0,
+    "description": "청량한 탄산음료",
+    "tags": ["음료", "탄산", "청량"]
+  },
+  {
+    "id": 13,
+    "name": "아이스크림",
+    "category": "디저트",
+    "price": 2000,
+    "spicy_level": 0,
+    "description": "부드럽고 달콤한 아이스크림",
+    "tags": ["디저트", "달콤", "차가운"]
+  }
+
+]
