@@ -6,3 +6,4 @@ __pycache__/
 *.mp3
 
 data/chroma_db/
+tests/notes.md
