@@ -11,6 +11,19 @@ ria_options.json       ← 세트 구성 옵션 (세트_디저트 선택지, 세
 ria_sets.json          ← 세트메뉴 (어떤 버거 + 어떤 옵션 선택 가능한지)
 
 
+---
+
+### 현재 실행 구조
+
+test.py 실행 → Python 프로세스 시작 → 메모리 초기화 → _embedding = None
+                                                              ↓
+                                                         모델 로드 (느림)
+test.py 종료 → 프로세스 종료 → 메모리 해제 → _embedding 사라짐
+
+test.py 재실행 → 또 새 프로세스 → _embedding = None → 또 모델 로드 (느림)
+
+
+=> 현재 테스트 목적으로 매번 test.py를 실행 하므로 속도 느림, FastAPI 서버에 붙이면 속도 개선.
 
 ---
 
