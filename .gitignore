@@ -5,3 +5,5 @@ __pycache__/
 *.wav
 *.mp3
 data/chroma_db/
+chromedriver.exe
+chromedriver-win64/
