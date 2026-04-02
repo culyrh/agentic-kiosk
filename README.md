@@ -1,9 +1,32 @@
-# sadollar-ai — feat/audio-processing
+### 크롤링, 단품 메뉴 db, 메뉴 json 완성.
 
-키오스크의 음성 처리(STT/TTS) 모듈 구현 브랜치입니다.
+-> 카테고리, 상품명, 가격, 이미지 등 다 포함됨. ( 총 78 개 메뉴 )
 
-- **STT**: 허깅페이스 Whisper 모델 로컬 추론 (faster-whisper)
-- **TTS**: 구현 예정
+
+⚠️ 세트 메뉴 크롤링 필요함.
+
+ria_menu.json          ← 현재처럼 단품 메뉴 (버거, 디저트, 드링크 각각)
+
+ria_options.json       ← 세트 구성 옵션 (세트_디저트 선택지, 세트_드링크 선택지, 토핑)
+
+ria_sets.json          ← 세트메뉴 (어떤 버거 + 어떤 옵션 선택 가능한지)
+
+
+---
+
+### 현재 실행 구조
+
+test.py 실행 → Python 프로세스 시작 → 메모리 초기화 → _embedding = None
+                                                              ↓
+                                                         모델 로드 (느림)
+                                                         
+test.py 종료 → 프로세스 종료 → 메모리 해제 → _embedding 사라짐
+
+
+test.py 재실행 → 또 새 프로세스 → _embedding = None → 또 모델 로드 (느림)
+
+
+=> 현재 테스트 목적으로 매번 test.py를 실행 하므로 속도 느림, FastAPI 서버에 붙이면 속도 개선.
 
 ---
 
@@ -25,7 +48,29 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-<br>
+---
+
+## RAG 메뉴 검색 테스트
+
+`menu.json` → ChromaDB 임베딩 저장 → 유사도 검색까지 테스트합니다.
+
+### 사전 준비
+
+`.env` 파일에 OpenAI API 키 필요:
+
+```
+OPENAI_API_KEY=sk-...
+```
+
+### 실행
+
+```bash
+python test.py
+```
+
+처음 실행 시 `data/chroma_db/`가 생성됩니다. 이후 실행부터는 기존 DB에 upsert됩니다.
+
+---
 
 ## STT (음성 인식)
 
