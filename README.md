@@ -30,22 +30,20 @@ test.py 재실행 → 또 새 프로세스 → _embedding = None → 또 모델 
 
 ---
 
-### 1. 가상환경 생성 및 활성화
+롯데리아 메뉴 데이터를 기반으로
+**메뉴 조회 API + AI 연동용 데이터 시스템**을 구축한 백엔드 프로젝트입니다.
 
-```bash
-python -m venv venv
+---
 
-# Windows
-venv\Scripts\activate
+## 📌 프로젝트 개요
 
-# Mac/Linux
-source venv/bin/activate
-```
+본 프로젝트는 음성 기반 주문 시스템을 위한 백엔드로,
+메뉴 데이터를 수집하고 AI 및 프론트엔드가 사용할 수 있도록 API 형태로 제공합니다.
 
-### 2. 패키지 설치
+### 전체 흐름
 
-```bash
-pip install -r requirements.txt
+```text
+크롤링 → JSON → SQLite DB → 조회 함수 → FastAPI → AI/프론트
 ```
 
 ---
@@ -143,18 +141,56 @@ python voice/stt_realtime.py --threshold 0.03
 
 ## 프로젝트 구조
 
+파일: `db/sqlite.py`
+
+지원 기능:
+
+* 메뉴 목록 조회
+* 메뉴 ID 조회
+* 메뉴 이름 조회
+* 키워드 검색
+
+---
+
+### 4. FastAPI API 서버
+
+#### 📍 엔드포인트
+
+| Method | URL           | 설명       |
+| ------ | ------------- | -------- |
+| GET    | `/menu`       | 메뉴 목록 조회 |
+| GET    | `/menu?q=불고기` | 키워드 검색   |
+| GET    | `/menu/{id}`  | 메뉴 상세 조회 |
+
+---
+
+### 5. AI 연동용 Tool
+
+AI 파트에서 DB를 직접 다루지 않고
+**함수 형태로 사용할 수 있도록 제공**
+
+#### 사용 예시
+
+```python
+from tools.get_menu_by_name import run
+
+run("한우불고기 세트")
 ```
+
+---
+
+## 📁 프로젝트 구조
+
+```text
 sadollar-ai/
 │
 ├── data/
-│   ├── menu.json              # 크롤링 결과물
-│   ├── menu.db                # SQLite DB 파일
-│   └── chroma/                # ChromaDB 저장 디렉토리
+│   ├── menu.json
+│   └── menu.db
 │
-├── ingestion/                 # [사전 준비] 1회성 파이프라인
-│   ├── crawler.py             # 롯데리아 크롤링 (BS4/Selenium)
-│   ├── sqlite_loader.py       # menu.json → SQLite
-│   └── chroma_loader.py       # menu.json → 임베딩 → ChromaDB
+├── ingestion/
+│   ├── crawler.py
+│   └── sqlite_loader.py
 │
 ├── db/
 │   ├── sqlite.py
@@ -175,10 +211,11 @@ sadollar-ai/
 │   └── tts.py                 # TTS
 │
 ├── api/
+│   ├── __init__.py
 │   ├── main.py
 │   └── routes/
-│       ├── order.py           # POST /order
-│       └── menu.py            # GET /menu, GET /menu/{id}
+│       ├── __init__.py
+│       └── menu.py
 │
 ├── config.py
 ├── main.py
