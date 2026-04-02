@@ -97,16 +97,6 @@ TTS
 | 아이스샷 | 501 ~ 599 |
 | 토핑 | 601 ~ 699 |
 
-### ChromaDB vs SQLite 역할 분리
-
-| | ChromaDB | SQLite |
-|--|---------|--------|
-| 담당 | AI팀 | 백엔드 |
-| 역할 | 자연어 의미 검색 | 정확한 데이터 저장/조회 |
-| 입력 | ria_menu.json | ria_menu.json + ria_options.json + ria_sets_raw.json |
-| 예시 | "매운 버거" → menu_id 반환 | menu_id로 가격/세트/장바구니 처리 |
-| 연결 키 | menu_id | menu_id |
-
 ---
 
 ## 환경 세팅
