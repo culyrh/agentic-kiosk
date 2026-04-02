@@ -6,6 +6,7 @@ faster-whisper를 사용해 로컬에서 음성 → 텍스트 변환
 캐시 위치: C:/Users/사용자/.cache/huggingface/hub/
 """
 
+import numpy as np
 from faster_whisper import WhisperModel
 
 
@@ -47,6 +48,31 @@ def transcribe(model: WhisperModel, audio_path: str, language: str = "ko") -> st
     )
 
     # segments는 generator → 순회해야 결과가 나옴
+    text = " ".join(segment.text.strip() for segment in segments)
+    return text
+
+
+def transcribe_array(model: WhisperModel, audio: "np.ndarray", language: str = "ko") -> str:
+    """
+    numpy 배열(float32, 16kHz)을 텍스트로 변환합니다.
+    실시간 마이크 입력처럼 파일 없이 바로 인식할 때 사용합니다.
+
+    Args:
+        model: load_model()로 생성한 WhisperModel
+        audio: float32 numpy 배열 (shape: [samples], 16kHz mono)
+        language: 언어 코드 ("ko" = 한국어)
+
+    Returns:
+        인식된 텍스트 문자열
+    """
+    segments, _ = model.transcribe(
+        audio.astype(np.float32),
+        language=language,
+        beam_size=1,
+        vad_filter=True,
+        vad_parameters=dict(min_silence_duration_ms=300),
+    )
+
     text = " ".join(segment.text.strip() for segment in segments)
     return text
 

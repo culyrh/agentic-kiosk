@@ -88,7 +88,7 @@ python test.py
 | large-v3 | ~3GB | 느림 | 매우 좋음 |
 | large-v3-turbo | ~1.6GB | 중간 | 매우 좋음 |
 
-### 실행
+### 녹음파일 인식
 
 ```bash
 # 기본 (medium 모델)
@@ -106,7 +106,40 @@ python voice/stt.py tests/뉴스녹음.m4a large-v3-turbo
 tests/results/뉴스녹음_medium_20260326_210639.txt
 ```
 
----
+### 실시간 음성 인식
+
+마이크로 말하면 발화가 끝나는 시점을 자동으로 감지해 바로 인식합니다.
+
+```bash
+# 기본 (small 모델, 한국어)
+python voice/stt_realtime.py
+
+# 옵션 지정
+python voice/stt_realtime.py --model small --device cpu --language ko
+
+# 주변 소음이 많을 때 (임계값을 높여 잡음 오인식 방지)
+python voice/stt_realtime.py --threshold 0.03
+```
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `--model` | `small` | 모델 크기 (tiny / small / medium / large-v3) |
+| `--device` | `cpu` | 추론 장치 (cpu / cuda) |
+| `--language` | `ko` | 인식 언어 코드 |
+| `--threshold` | `0.01` | 음성 감지 민감도 — 낮을수록 민감, 높을수록 잡음 무시 |
+
+실행하면 마이크 대기 상태가 되고, 말을 마치면 약 0.8초 무음 후 자동으로 인식해 출력합니다.
+
+```
+[실시간 STT] 마이크 대기 중... (Ctrl+C로 종료)
+
+[인식] 안녕하세요, 주문하고 싶어요.
+      (1.23초)
+```
+
+`Ctrl+C` 로 종료합니다.
+
+<br>
 
 ## 프로젝트 구조
 
@@ -137,7 +170,8 @@ sadollar-ai/
 │   └── prompts.py             # 시스템 프롬프트
 │
 ├── voice/
-│   ├── stt.py                 # Whisper STT
+│   ├── stt.py                 # Whisper STT (파일 인식)
+│   ├── stt_realtime.py        # Whisper STT (실시간 마이크 인식)
 │   └── tts.py                 # TTS
 │
 ├── api/
