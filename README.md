@@ -227,3 +227,11 @@ python voice/stt_realtime.py --threshold 0.03
 ```
 
 `Ctrl+C` 로 종료합니다.
+<<<<<<< HEAD
+=======
+
+<br>
+
+
+>>>>>>> 797207ec1b3cc77a304e18c70b113da524f4ab0a
+>>>>>>> dffebecaa4f5d01910f7c3e616283565d19c2ad9
