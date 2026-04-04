@@ -11,7 +11,7 @@ sadollar-kiosk/
 ├── data/                          # 데이터 파일 모음
 │   ├── ria_menu.json              # 단품 메뉴 데이터 (82개, 카테고리별 100번대 id)
 │   ├── ria_options.json           # 세트 구성 옵션 (드링크/사이드/토핑 43개)
-│   ├── ria_sets_raw.json          # 세트 메뉴 데이터 (23개)
+│   ├── ria_sets.json          # 세트 메뉴 데이터 (23개)
 │   └── ria_menu.db                # SQLite DB 파일 (gitignore 제외)
 │
 ├── app/
@@ -97,16 +97,6 @@ TTS
 | 아이스샷 | 501 ~ 599 |
 | 토핑 | 601 ~ 699 |
 
-### ChromaDB vs SQLite 역할 분리
-
-| | ChromaDB | SQLite |
-|--|---------|--------|
-| 담당 | AI팀 | 백엔드 |
-| 역할 | 자연어 의미 검색 | 정확한 데이터 저장/조회 |
-| 입력 | ria_menu.json | ria_menu.json + ria_options.json + ria_sets_raw.json |
-| 예시 | "매운 버거" → menu_id 반환 | menu_id로 가격/세트/장바구니 처리 |
-| 연결 키 | menu_id | menu_id |
-
 ---
 
 ## 환경 세팅
@@ -145,10 +135,7 @@ OPENAI_API_KEY=sk-...
 # 1. 테이블 생성
 python db_setup.py
 
-# 2. img_url 매칭
-python add_imgurl.py
-
-# 3. JSON 데이터 → DB 삽입
+# 2. JSON 데이터 → DB 삽입
 python insert_data.py
 ```
 
@@ -240,50 +227,3 @@ python voice/stt_realtime.py --threshold 0.03
 ```
 
 `Ctrl+C` 로 종료합니다.
-
-<br>
-
-## 프로젝트 구조
-
-```
-sadollar-ai/
-│
-├── data/
-│   ├── menu.json              # 크롤링 결과물
-│   ├── menu.db                # SQLite DB 파일
-│   └── chroma/                # ChromaDB 저장 디렉토리
-│
-├── ingestion/                 # [사전 준비] 1회성 파이프라인
-│   ├── crawler.py             # 롯데리아 크롤링 (BS4/Selenium)
-│   ├── sqlite_loader.py       # menu.json → SQLite
-│   └── chroma_loader.py       # menu.json → 임베딩 → ChromaDB
-│
-├── db/
-│   ├── sqlite.py
-│   └── chroma.py
-│
-├── tools/
-│   ├── search_menu.py         # ChromaDB 시맨틱 검색
-│   ├── get_menu_by_name.py    # SQLite 이름 정확 조회
-│   └── get_menu_detail.py     # SQLite 상세 정보 조회
-│
-├── agent/
-│   ├── react_agent.py         # ReAct 루프 구현
-│   └── prompts.py             # 시스템 프롬프트
-│
-├── voice/
-│   ├── stt.py                 # Whisper STT (파일 인식)
-│   ├── stt_realtime.py        # Whisper STT (실시간 마이크 인식)
-│   └── tts.py                 # TTS
-│
-├── api/
-│   ├── main.py
-│   └── routes/
-│       ├── order.py           # POST /order
-│       └── menu.py            # GET /menu, GET /menu/{id}
-│
-├── config.py
-├── main.py
-└── requirements.txt
-```
->>>>>>> 797207ec1b3cc77a304e18c70b113da524f4ab0a

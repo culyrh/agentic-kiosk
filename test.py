@@ -4,8 +4,6 @@ from app.rag.vector_store import create_vector_db_1
 from app.rag.chroma import get_chroma_db
 from dotenv import load_dotenv
 from app.tools.menu_tools import search_menu_logic
-
-
 from app.tools.menu_tools import search_menu 
 
 

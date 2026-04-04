@@ -52,7 +52,7 @@ for m in menus:
             m.get("img_url", ""),
             m.get("allergy", ""),
             m.get("origin", ""),
-            m.get("nutrition", ""),
+            json.dumps(m.get("nutrition", {}), ensure_ascii=False),
             m.get("spicy_level", 0),
             m.get("is_set_available", 0)
         ))
@@ -84,47 +84,54 @@ for o in options:
         print(f"   ⚠️  {o['option_id']} 이미 존재 (스킵)")
 
 # =====================================================
-# 4. ria_sets_raw.json → set_menus, set_options 삽입
+# 4. ria_sets.json → set_menus, set_options 삽입
 # =====================================================
 print("\n4. set_menus 테이블 데이터 삽입 중...")
 
-with open("data/ria_sets_raw.json", encoding="utf-8") as f:
+# set_menus 테이블에 새 컬럼 추가
+new_columns = [
+    ("description", "TEXT DEFAULT ''"),
+    ("img_url",     "TEXT DEFAULT ''"),
+    ("allergy",     "TEXT DEFAULT ''"),
+    ("origin",      "TEXT DEFAULT ''"),
+    ("calorie",     "TEXT DEFAULT ''"),
+]
+for col_name, col_type in new_columns:
+    try:
+        cursor.execute(f"ALTER TABLE set_menus ADD COLUMN {col_name} {col_type}")
+    except:
+        pass  # 이미 있으면 스킵
+
+with open("data/ria_sets.json", encoding="utf-8") as f:
     sets = json.load(f)
 
-all_option_ids = [o["option_id"] for o in options]
+# 토핑 제외한 옵션만 세트에 연결
+all_option_ids = [o["option_id"] for o in options if o["option_type"] != "토핑"]
 inserted_sets = []
 
 for s in sets:
-    if s["burger_menu_id"] is None or s["set_price"] is None:
-        print(f"   ⚠️  {s['name']} → burger_menu_id 또는 set_price 없음 (스킵)")
+    if s["burger_menu_id"] is None:
+        print(f"   ⚠️  {s['name']} → burger_menu_id 없음 (스킵)")
         continue
     try:
         cursor.execute("""
-            INSERT INTO set_menus (burger_menu_id, name, set_price)
-            VALUES (?, ?, ?)
+            INSERT INTO set_menus (burger_menu_id, name, set_price, description, img_url, allergy, origin, calorie)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             s["burger_menu_id"],
             s["name"],
-            s["set_price"]
+            s.get("price", ""),
+            s.get("description", ""),
+            s.get("img_url", ""),
+            s.get("allergy", ""),
+            s.get("origin", ""),
+            s.get("calorie", "")
         ))
         set_id = cursor.lastrowid
         inserted_sets.append(set_id)
         print(f"   ✅ {s['name']} (set_id: {set_id})")
     except Exception as e:
         print(f"   ❌ {s['name']} 실패: {e}")
-
-print("\n5. set_options 연결 중...")
-for set_id in inserted_sets:
-    for option_id in all_option_ids:
-        try:
-            cursor.execute("""
-                INSERT INTO set_options (set_id, option_id)
-                VALUES (?, ?)
-            """, (set_id, option_id))
-        except Exception as e:
-            print(f"   ❌ set_id:{set_id} - {option_id} 실패: {e}")
-
-print(f"   ✅ {len(inserted_sets)}개 세트에 옵션 연결 완료")
 
 # =====================================================
 # 저장 및 결과 확인
