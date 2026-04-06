@@ -4,8 +4,6 @@ from app.rag.vector_store import create_vector_db_1
 from app.rag.chroma import get_chroma_db
 from dotenv import load_dotenv
 from app.tools.menu_tools import search_menu_logic
-
-
 from app.tools.menu_tools import search_menu 
 
 
@@ -31,10 +29,10 @@ create_vector_db_1(doc_menus)
 
 
 result = search_menu.invoke({ ## 지금은 수동으로, agent연결 후 자동 ##
-    "query": "바질 들어가는 햄버거 추천해줘",
+    "query": "치즈 들어가는 햄버거 추천해줘",
     # "exclude": ["우유"],
     # "category": "버거",
-    # "keyword": "바질",
+    "keyword": "치즈",
     })
 
 

@@ -33,64 +33,28 @@ OPENAI_API_KEY=sk-...
 
 ---
 
-## DB 구조
-
-### DB 초기화 (최초 1회)
+## DB 초기화 (최초 1회)
 ```bash
 # 1. 테이블 생성
 python db_setup.py
 
-# 2. img_url 매칭
-python add_imgurl.py
-
-# 3. JSON 데이터 → DB 삽입
+# 2. JSON 데이터 → DB 삽입
 python insert_data.py
 ```
-
-### SQLite 테이블 (ria_menu.db)
-
-| 테이블 | 역할 | 데이터 수 |
-|--------|------|-----------|
-| menu | 단품 메뉴 전체 | 82개 |
-| options | 세트 구성 선택지 (드링크/사이드/토핑) | 43개 |
-| set_menus | 버거별 세트 구성 및 가격 | 23개 |
-| set_options | 세트-옵션 연결 | 989개 |
-| cart | 주문 중인 장바구니 (주문 시 채워짐) | - |
-| orders | 결제 완료된 주문 내역 | - |
-| sessions | 현재 대화 상태 저장 | - |
-
-### 메뉴 ID 체계 (카테고리별 100번대)
-
-| 카테고리 | ID 범위 |
-|----------|---------|
-| 버거 | 101 ~ 199 |
-| 디저트 | 201 ~ 299 |
-| 치킨 | 301 ~ 399 |
-| 음료 | 401 ~ 499 |
-| 아이스샷 | 501 ~ 599 |
-| 토핑 | 601 ~ 699 |
 
 ---
 
 ## RAG 메뉴 검색 테스트
 
-`menu.json` → ChromaDB 임베딩 저장 → 유사도 검색까지 테스트합니다.
-
-### 사전 준비
-
-`.env` 파일에 OpenAI API 키 필요:
-
-```
-OPENAI_API_KEY=sk-...
-```
-
-### 실행
-
+`ria_menu.json` → ChromaDB 임베딩 저장 → 유사도 검색까지 테스트합니다.
 ```bash
 python test.py
 ```
 
-처음 실행 시 `data/chroma_db/`가 생성됩니다. 이후 실행부터는 기존 DB에 upsert됩니다.
+처음 실행 시 ChromaDB가 생성됩니다. 이후 실행부터는 기존 DB에 upsert됩니다.
+
+> ⚠️ 현재 test.py는 매번 실행 시 모델을 새로 로드하므로 속도가 느립니다.
+> FastAPI 서버에 붙이면 모델이 메모리에 유지되어 속도가 개선됩니다.
 
 ---
 
@@ -122,8 +86,7 @@ python voice/stt.py tests/뉴스녹음.m4a large-v3
 python voice/stt.py tests/뉴스녹음.m4a large-v3-turbo
 ```
 
-결과는 터미널에 출력되고 `tests/results/` 에 텍스트 파일로 저장됩니다.
-
+결과는 터미널에 출력되고 `tests/results/`에 텍스트 파일로 저장됩니다.
 ```
 tests/results/뉴스녹음_medium_20260326_210639.txt
 ```
@@ -162,8 +125,6 @@ python voice/stt_realtime.py --threshold 0.03
 `Ctrl+C` 로 종료합니다.
 
 ---
-
-## 프로젝트 구조
 
 ```text
 sadollar-ai/

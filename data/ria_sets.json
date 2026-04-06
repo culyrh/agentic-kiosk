@@ -1,0 +1,142 @@
+[
+  {
+    "name": "통다리 크리스피치킨버거세트(그릭랜치)",
+    "description": "육즙 가득 통다리살에 버터밀크 외피로 입안을 가득 채우는 바삭함이 특징, 요거트 첨가된 그릭랜치소스로 마일드한 맛의 크리스피치킨버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2025/12/30/20251230093031249_9.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 조개류(굴)",
+    "origin": "닭고기 - 브라질산",
+    "calorie": "730kcal ~ 1454kcal",
+    "burger_menu_id": 102,
+    "price": "8,900"
+  },
+  {
+    "name": "통다리 크리스피치킨버거세트(파이어핫)",
+    "description": "육즙 가득 통다리살에 버터밀크 외피로 입안을 가득 채우는 바삭함이 특징, 중독성 있는 갈릭핫소스로 강렬한 매운맛의 크리스피치킨버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2025/12/30/20251230093107925_0.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 조개류(굴)",
+    "origin": "닭고기 - 브라질산",
+    "calorie": "706kcal ~ 1431kcal",
+    "burger_menu_id": 101,
+    "price": "8,900"
+  },
+  {
+    "name": "모짜렐라버거세트 토마토바질",
+    "description": "바질의 신선함을 담은 바질마요소스에 풍부하고 진한 토마토소스로 맛을 낸 스페셜 모짜렐라버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2025/01/15/2025011516284430_5.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 토마토",
+    "origin": "쇠고기 - 호주산",
+    "calorie": "845kcal ~ 1531kcal",
+    "burger_menu_id": 104,
+    "price": "11,200"
+  },
+  {
+    "name": "모짜렐라버거세트 발사믹바질",
+    "description": "바질의 신선함을 담은 바질마요소스에 레드와인 발사믹의 산뜻함을 더한 스페셜 모짜렐라버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2025/01/15/2025011516323958_2.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 토마토, 아황산류",
+    "origin": "쇠고기 - 호주산",
+    "calorie": "845kcal ~ 1530kcal",
+    "burger_menu_id": 103,
+    "price": "11,200"
+  },
+  {
+    "name": "전주 비빔라이스 버거세트",
+    "description": "전주비빔밥을 닮은 라이스번과 노른자가 터지는 반숙란,달콤한 고추장 소스가 어우러진 새로운 라이스 버거(포장지는 금박으로 제작되어 전자레인지 사용이 불가합니다)",
+    "img_url": "https://img.lotteeatz.com/upload/product/2025/03/19/20250319132412183_5.png",
+    "allergy": "달걀, 밀, 대두, 쇠고기",
+    "origin": "쌀-국내산/쇠고기-호주산",
+    "calorie": "687kcal ~ 1372kcal",
+    "burger_menu_id": 126,
+    "price": "9,200"
+  },
+  {
+    "name": "리아 새우 베이컨 세트",
+    "description": "베이컨+토마토로 더욱 풍성해진 맛과 볼륨감의 새우버거 업그레이드 한정판",
+    "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/2024112020294251_5.png",
+    "allergy": "달걀, 밀, 대두, 우유, 토마토, 돼지고기, 새우",
+    "origin": "돼지고기 - 외국산",
+    "calorie": "631kcal ~ 1316kcal",
+    "burger_menu_id": 120,
+    "price": "8,300"
+  },
+  {
+    "name": "리아 불고기 베이컨 세트",
+    "description": "베이컨+토마토로 더욱 풍성해진 맛과 볼륨감의 불고기버거 업그레이드 한정판",
+    "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202930156_7.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 토마토, 돼지고기",
+    "origin": "쇠고기 - 호주산 / 돼지고기 - 외국산",
+    "calorie": "620kcal ~ 1306kcal",
+    "burger_menu_id": 119,
+    "price": "8,300"
+  },
+  {
+    "name": "더블 클래식치즈버거 세트",
+    "description": "두 장의 패티가 이루는 조화로운 맛에 든든함까지 추가된 더블 클래식치즈버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202906233_0.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기",
+    "origin": "쇠고기 - 호주산",
+    "calorie": "829kcal ~ 1515kcal",
+    "burger_menu_id": 107,
+    "price": "9,200"
+  },
+  {
+    "name": "더블 데리버거 세트",
+    "description": "두 장의 패티가 이루는 조화로운 맛에 든든함까지 추가된 더블버거 시리즈",
+    "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202834322_0.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 조개류(가리비)",
+    "origin": "쇠고기 - 호주산",
+    "calorie": "558kcal ~ 1244kcal",
+    "burger_menu_id": 110,
+    "price": "7,300"
+  },
+  {
+    "name": "더블 한우불고기버거 세트",
+    "description": "국내산 한우를 사용한 패티 2장 구성으로 육즙 가득! 묵직한 육풍미를 특징으로 한 프리미엄 버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202227682_0.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기. 토마토",
+    "origin": "쇠고기 - 국내산 한우",
+    "calorie": "915kcal ~ 1600kcal",
+    "burger_menu_id": 105,
+    "price": "14,900"
+  },
+  {
+    "name": "한우불고기버거 세트",
+    "description": "브리오쉬번에 국내산 한우를 사용한 패티, 신선한 야채, 특제소스로 완성한 프리미엄 햄버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/2024112020143034_9.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 토마토",
+    "origin": "쇠고기 - 국내산 한우",
+    "calorie": "684kcal ~ 1370kcal",
+    "burger_menu_id": 106,
+    "price": "10,900"
+  },
+  {
+    "name": "리아 불고기 세트",
+    "description": "두툼한 쇠고기패티와 한국적인 맛의 소스가 잘 조화된 롯데리아 대표 버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2025/03/19/20250319132202660_0.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 토마토, 돼지고기",
+    "origin": "쇠고기 - 호주산",
+    "calorie": "575kcal ~ 1260kcal",
+    "burger_menu_id": 119,
+    "price": "7,300"
+  },
+  {
+    "name": "모짜렐라 인 더 버거 베이컨 세트",
+    "description": "자연산 모짜렐라 치즈와 고소한 베이컨이 만나 풍부한 맛의 버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202807700_8.png",
+    "allergy": "밀, 대두, 달걀, 우유, 쇠고기, 돼지고기",
+    "origin": "쇠고기 호주산 / 베이컨-돼지고기 외국산",
+    "calorie": "808 ~ 1,493",
+    "burger_menu_id": 115,
+    "price": "10,000"
+  },
+  {
+    "name": "더블엑스투버거 세트",
+    "description": "비프패티2장, 치즈2장으로 깊고 풍부한맛의 정통 아메리칸버거",
+    "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202354482_3.png",
+    "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 토마토",
+    "origin": "쇠고기 - 호주산",
+    "calorie": "815kcal ~ 1501kcal",
+    "burger_menu_id": 111,
+    "price": "9,200"
+  }
+]

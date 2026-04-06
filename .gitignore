@@ -8,3 +8,4 @@ data/chroma_db/
 chromedriver.exe
 chromedriver-win64/
 tests/notes.md
+*.db
