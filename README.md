@@ -73,6 +73,11 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
 | `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
 
+DB 담당이랑 확인 후 추가될 수 있는 것:
+| 함수 | 기능 |
+|------|------|
+|세트 메뉴 주문 | add_to_cart에 is_set, side_option, drink_option 처리 |
+
 ---
 
 ## STT (음성 인식)
