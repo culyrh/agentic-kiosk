@@ -278,10 +278,16 @@ sadollar-ai/
 │   ├── db.py                      # 크롤링 결과 DB 저장
 │   └── export_js.py               # JS 데이터 추출
 │
+├── api/
+│   ├── main.py                    # FastAPI 앱 진입점, 라우터 등록
+│   └── routes/
+│       ├── menu.py                # GET /menu, GET /menu/{id}
+│       └── stt.py                 # POST /stt/transcribe, WS /stt/ws
+│
 ├── voice/
-│   ├── stt.py                 # Whisper STT (파일 인식)
-│   ├── stt_realtime.py        # Whisper STT (실시간 마이크 인식)
-│   └── tts.py                 # TTS
+│   ├── stt.py                     # Whisper STT (파일 인식)
+│   ├── stt_realtime.py            # Whisper STT (실시간 마이크 인식, listen_once 포함)
+│   └── tts.py                     # TTS
 │
 ├── tests/
 │   ├── 뉴스녹음.m4a
