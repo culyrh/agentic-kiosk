@@ -26,7 +26,7 @@ CHANNELS = 1
 CHUNK_DURATION = 0.05     # 한 번에 읽을 청크 길이 (초)
 CHUNK_SAMPLES = int(SAMPLE_RATE * CHUNK_DURATION)
 
-ENERGY_THRESHOLD = 0.01   # 음성/무음 판단 RMS 임계값 (환경에 따라 조정)
+ENERGY_THRESHOLD = 0.005   # 음성/무음 판단 RMS 임계값 (환경에 따라 조정)
 SPEECH_PAD_CHUNKS = 4     # 음성 시작 전 유지할 pre-roll 청크 수
 SILENCE_CHUNKS = 16       # 무음이 이 청크 수 이상 지속되면 발화 종료로 판단 (약 0.8초)
 MIN_SPEECH_CHUNKS = 6     # 최소 이 청크 수 이상이어야 인식 시도 (너무 짧은 잡음 무시)
