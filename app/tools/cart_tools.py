@@ -8,12 +8,11 @@ DB_PATH = "data/ria_menu.db"
 
 
 def _build_search_terms(normalized: str, clean_name: str) -> list[str]:
-    """공백 기준 토큰 분리 + 접두어 분해로 검색어 목록을 생성한다.
+    
+    # 공백 기준 토큰 분리 + 접두어 분해로 검색어 목록을 생성한다.
+    # 공백 있는 입력 -> 토큰 분리로 해결
+    # 공백 없는 입력 -> 접두어 분해로 해결
 
-    - 공백 분리: "더블 새우 버거" → ["더블", "새우", "버거"] (단어 순서 무관 검색)
-    - 접두어 분해: "불고기버거" → ["불고기버거", "불고기버", "불고기"] (복합어 처리)
-    - 최소 2글자 ("새우", "더블" 같은 2글자 단어 포함)
-    """
     tokens = [t for t in clean_name.split() if t] or [normalized]
 
     terms = []
@@ -26,6 +25,7 @@ def _build_search_terms(normalized: str, clean_name: str) -> list[str]:
 
     seen = set()
     return [t for t in terms if not (t in seen or seen.add(t))]
+
 
 @tool
 def add_to_cart(item_name: str, quantity: int = 1) -> str:
@@ -40,6 +40,7 @@ def add_to_cart(item_name: str, quantity: int = 1) -> str:
     # [BEST], [NEW] 등 badge 태그 제거 후 공백 정규화
     clean_name = re.sub(r'\[.*?\]', '', item_name).strip()
     normalized = clean_name.replace(" ", "")
+    
     # 1차: 완전 일치
     cur.execute(
         "SELECT id, price, name FROM menu WHERE REPLACE_SPACE(name) = ?",
@@ -50,14 +51,34 @@ def add_to_cart(item_name: str, quantity: int = 1) -> str:
     if exact_row:
         rows = [exact_row]
     else:
-        # 2차: 복합어 접두어 분해 후 OR LIKE 검색
-        terms = _build_search_terms(normalized, clean_name)
-        placeholders = " OR ".join(["REPLACE_SPACE(name) LIKE ?" for _ in terms])
-        cur.execute(
-            f"SELECT id, price, name FROM menu WHERE {placeholders}",
-            [f"%{t}%" for t in terms],
-        )
-        rows = cur.fetchall()
+        tokens = [t for t in clean_name.split() if t] or [normalized]
+        rows = []
+
+        # 2차: 토큰이 여러 개면 AND 검색 (모든 토큰 포함)
+        if len(tokens) > 1:
+            and_conditions = " AND ".join(["REPLACE_SPACE(name) LIKE ?" for _ in tokens])
+            cur.execute(
+                f"SELECT id, price, name FROM menu WHERE {and_conditions}",
+                [f"%{t}%" for t in tokens]
+            )
+            rows = cur.fetchall()
+
+        # 3차: 접두어를 긴 것부터 수집, 검색어 절반 길이까지 내려가며 누락 메뉴 추가
+        if not rows:
+            terms = _build_search_terms(normalized, clean_name)
+            collected = {}
+            half = max(2, len(normalized) // 2)
+            for term in terms:
+                cur.execute(
+                    "SELECT id, price, name FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
+                    (f"%{term}%",)
+                )
+                for row in cur.fetchall():
+                    if row[0] not in collected:
+                        collected[row[0]] = row
+                if collected and len(term) <= half:
+                    break
+            rows = list(collected.values())
 
     if not rows:
         conn.close()
@@ -71,7 +92,7 @@ def add_to_cart(item_name: str, quantity: int = 1) -> str:
 
     menu_id, price_str, actual_name = rows[0]
     try:
-        unit_price = int(str(price_str).replace(",", "").replace("원", "").strip())
+        unit_price = int(price_str.replace(",", ""))
     except ValueError:
         unit_price = 0
 
@@ -133,14 +154,34 @@ def remove_from_cart(item_name: str) -> str:
     if exact_row:
         rows = [exact_row]
     else:
-        # 2차: 복합어 접두어 분해 후 OR LIKE 검색
-        terms = _build_search_terms(normalized, clean_name)
-        placeholders = " OR ".join(["REPLACE_SPACE(name) LIKE ?" for _ in terms])
-        cur.execute(
-            f"SELECT id, name FROM menu WHERE {placeholders}",
-            [f"%{t}%" for t in terms],
-        )
-        rows = cur.fetchall()
+        tokens = [t for t in clean_name.split() if t] or [normalized]
+        rows = []
+
+        # 2차: 토큰이 여러 개면 AND 검색 (모든 토큰 포함)
+        if len(tokens) > 1:
+            and_conditions = " AND ".join(["REPLACE_SPACE(name) LIKE ?" for _ in tokens])
+            cur.execute(
+                f"SELECT id, name FROM menu WHERE {and_conditions}",
+                [f"%{t}%" for t in tokens]
+            )
+            rows = cur.fetchall()
+
+        # 3차: 접두어를 긴 것부터 수집, 검색어 절반 길이까지 내려가며 누락 메뉴 추가
+        if not rows:
+            terms = _build_search_terms(normalized, clean_name)
+            collected = {}
+            half = max(2, len(normalized) // 2)
+            for term in terms:
+                cur.execute(
+                    "SELECT id, name FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
+                    (f"%{term}%",)
+                )
+                for row in cur.fetchall():
+                    if row[0] not in collected:
+                        collected[row[0]] = row
+                if collected and len(term) <= half:
+                    break
+            rows = list(collected.values())
 
     if not rows:
         conn.close()
