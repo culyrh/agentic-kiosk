@@ -6,7 +6,7 @@
 
 ## 프로젝트 구조
 ```
-sadollar-kiosk/
+sadollar-ai/
 │
 ├── data/                          # 데이터 파일 모음
 │   ├── ria_menu.json              # 단품 메뉴 데이터 (82개, 카테고리별 100번대 id)
@@ -30,8 +30,16 @@ sadollar-kiosk/
 │   ├── db.py                      # 크롤링 결과 DB 저장
 │   └── export_js.py               # JS 데이터 추출
 │
+├── api/
+│   ├── main.py                    # FastAPI 앱 진입점, 라우터 등록
+│   └── routes/
+│       ├── menu.py                # GET /menu, GET /menu/{id}
+│       └── stt.py                 # POST /stt/transcribe, WS /stt/ws
+│
 ├── voice/
-│   └── stt.py                     # Whisper STT 음성 인식
+│   ├── stt.py                     # Whisper STT (파일 인식)
+│   ├── stt_realtime.py            # Whisper STT (실시간 마이크 인식, listen_once 포함)
+│   └── tts.py                     # TTS
 │
 ├── tests/
 │   ├── 뉴스녹음.m4a
@@ -291,3 +299,52 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
 | `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
 | `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
+
+---
+
+## FastAPI 서버
+
+### 서버 실행
+
+```bash
+uvicorn api.main:app --reload
+```
+
+실행 후 `http://localhost:8000/docs` 에서 Swagger UI로 전체 API를 확인하고 테스트할 수 있습니다.
+
+### API 엔드포인트
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| GET | `/menu` | 메뉴 목록 조회 (`?q=검색어` 로 키워드 검색) |
+| GET | `/menu/{id}` | 메뉴 상세 조회 |
+| POST | `/stt/transcribe` | 오디오 파일 업로드 → 텍스트 변환 (로컬 테스트용) |
+| WS | `/stt/ws` | 실시간 오디오 스트리밍 → 텍스트 반환 |
+
+### STT API
+
+**REST — 파일 업로드 (로컬 테스트용)**
+
+Swagger UI(`/docs`)에서 오디오 파일을 직접 업로드해 테스트할 수 있습니다.
+
+```
+POST /stt/transcribe
+지원 형식: wav, mp3, m4a, ogg, flac
+반환: {"text": "인식된 텍스트", "language": "ko"}
+```
+
+**WebSocket — 실시간 스트리밍 (키오스크 브라우저 연동용)**
+
+브라우저에서 마이크 오디오를 float32 PCM 청크(50ms 단위)로 전송하면,
+발화가 끝날 때마다 인식 결과를 JSON으로 반환합니다.
+
+```
+WS /stt/ws
+송신: float32 PCM 바이트 (16kHz, mono, 50ms 청크)
+수신: {"text": "인식된 텍스트"}
+```
+
+> ⚠️ `/stt/ws` 로 받은 `text` 를 AI 에이전트의 입력으로 사용합니다.
+> 에이전트는 이 텍스트를 기반으로 메뉴 검색, 장바구니 추가 등 주문 흐름을 처리합니다.
+
+---
