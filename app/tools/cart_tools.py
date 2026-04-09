@@ -6,11 +6,6 @@ from app.session_context import current_session_id
 
 DB_PATH = "data/ria_menu.db"
 
-_remove_called: set[str] = set()
-
-
-def reset_remove_flag(session_id: str) -> None:
-    _remove_called.discard(session_id)
 
 
 def _build_search_terms(normalized: str, clean_name: str) -> list[str]:
@@ -149,25 +144,57 @@ def remove_from_cart(item_name: str) -> str:
 
     session_id = current_session_id.get()
 
-    if session_id in _remove_called:
-        return "이미 이번 요청에서 처리 중입니다. 손님께 어떤 메뉴를 취소할지 확인하세요."
-    _remove_called.add(session_id)
     conn = sqlite3.connect(DB_PATH)
     conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
     cur = conn.cursor()
 
     clean_name = re.sub(r'\[.*?\]', '', item_name).strip()
-    tokens = [t for t in clean_name.split() if t] or [clean_name]
+    normalized = clean_name.replace(" ", "")
+    tokens = [t for t in clean_name.split() if t] or [normalized]
 
-    # 장바구니에 있는 항목 중에서 매칭 (menu 전체가 아닌 cart 기준)
-    and_conditions = " AND ".join(["REPLACE_SPACE(m.name) LIKE ?" for _ in tokens])
+    # 1차: 완전 일치
     cur.execute(
-        f"""SELECT m.id, m.name FROM cart c
-            JOIN menu m ON c.menu_id = m.id
-            WHERE c.session_id = ? AND {and_conditions}""",
-        [session_id] + [f"%{t}%" for t in tokens]
+        """SELECT m.id, m.name FROM cart c
+           JOIN menu m ON c.menu_id = m.id
+           WHERE c.session_id = ? AND REPLACE_SPACE(m.name) = ?""",
+        (session_id, normalized)
     )
-    rows = cur.fetchall()
+    exact_row = cur.fetchone()
+
+    if exact_row:
+        rows = [exact_row]
+    else:
+        rows = []
+
+        # 2차: AND 검색 (다중 토큰)
+        if len(tokens) > 1:
+            and_conditions = " AND ".join(["REPLACE_SPACE(m.name) LIKE ?" for _ in tokens])
+            cur.execute(
+                f"""SELECT m.id, m.name FROM cart c
+                    JOIN menu m ON c.menu_id = m.id
+                    WHERE c.session_id = ? AND {and_conditions}""",
+                [session_id] + [f"%{t}%" for t in tokens]
+            )
+            rows = cur.fetchall()
+
+        # 3차: 접두어 단계별 수집
+        if not rows:
+            terms = _build_search_terms(normalized, clean_name)
+            collected = {}
+            half = max(2, len(normalized) // 2)
+            for term in terms:
+                cur.execute(
+                    """SELECT m.id, m.name FROM cart c
+                       JOIN menu m ON c.menu_id = m.id
+                       WHERE c.session_id = ? AND REPLACE_SPACE(m.name) LIKE ?""",
+                    (session_id, f"%{term}%")
+                )
+                for row in cur.fetchall():
+                    if row[0] not in collected:
+                        collected[row[0]] = row
+                if collected and len(term) <= half:
+                    break
+            rows = list(collected.values())
 
     if not rows:
         conn.close()

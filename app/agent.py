@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from app.tools.menu_tools import search_menu, get_menu_by_price, get_menu_info
-from app.tools.cart_tools import add_to_cart, remove_from_cart, view_cart, confirm_order, clear_cart, reset_remove_flag
+from app.tools.cart_tools import add_to_cart, remove_from_cart, view_cart, confirm_order, clear_cart
 from app.session_context import current_session_id
 
 conversation_history: dict[str, list] = defaultdict(list)
@@ -22,7 +22,7 @@ SYSTEM_PROMPT = """당신은 패스트푸드 매장 '리아버거'의 주문 도
 - 손님이 "담아줘", "주문할게", "하나 줘" 등 주문 의도를 명확히 밝히면 search_menu를 절대 호출하지 말고 바로 add_to_cart만 사용하라. add_to_cart가 메뉴명 매칭을 내부적으로 처리한다.
 - 메뉴를 추천해달라거나 어떤 메뉴가 있는지 물어볼 때만 search_menu를 호출하라.
 - 가장 비싸거나 저렴한 메뉴를 물으면 get_menu_by_price 도구를 사용하라.
-- 손님이 취소를 원하면 remove_from_cart 도구를 손님이 말한 단어 그대로 딱 1번만 호출하라. tool이 선택지를 반환하면 스스로 판단해서 추가 호출하지 말고 반드시 손님에게 어떤 메뉴를 취소할지 물어봐라.
+- 손님이 취소를 원하면 remove_from_cart를 사용하라. 손님이 메뉴명을 명확히 여러 개 지정했을 때만 여러 번 호출하라. 메뉴명이 애매하거나 1개만 언급했을 때는 딱 1번만 호출하고, tool이 선택지를 반환하면 손님에게 어떤 메뉴를 취소할지 물어봐라.
 - 손님이 장바구니 확인을 원하면 view_cart 도구를 사용하라.
 - 손님이 주문 완료/결제를 원하면 confirm_order 도구를 사용하라.
 - 손님이 전체 취소를 원하면 clear_cart 도구를 사용하라.
@@ -43,7 +43,6 @@ agent = create_agent(llm, tools, system_prompt=SYSTEM_PROMPT, debug=True)
 def chat(user_input: str, session_id: str = "default") -> str:
     
     current_session_id.set(session_id)
-    reset_remove_flag(session_id)
     history = conversation_history[session_id]
     history.append({"role": "user", "content": user_input})
     result = agent.invoke({"messages": history})
