@@ -141,51 +141,27 @@ def view_cart() -> str:
 def remove_from_cart(item_name: str) -> str:
     """장바구니에서 메뉴를 제거한다"""
 
+    session_id = current_session_id.get()
     conn = sqlite3.connect(DB_PATH)
     conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
     cur = conn.cursor()
 
     clean_name = re.sub(r'\[.*?\]', '', item_name).strip()
-    normalized = clean_name.replace(" ", "")
-    # 1차: 완전 일치
-    cur.execute("SELECT id, name FROM menu WHERE REPLACE_SPACE(name) = ?", (normalized,))
-    exact_row = cur.fetchone()
+    tokens = [t for t in clean_name.split() if t] or [clean_name]
 
-    if exact_row:
-        rows = [exact_row]
-    else:
-        tokens = [t for t in clean_name.split() if t] or [normalized]
-        rows = []
-
-        # 2차: 토큰이 여러 개면 AND 검색 (모든 토큰 포함)
-        if len(tokens) > 1:
-            and_conditions = " AND ".join(["REPLACE_SPACE(name) LIKE ?" for _ in tokens])
-            cur.execute(
-                f"SELECT id, name FROM menu WHERE {and_conditions}",
-                [f"%{t}%" for t in tokens]
-            )
-            rows = cur.fetchall()
-
-        # 3차: 접두어를 긴 것부터 수집, 검색어 절반 길이까지 내려가며 누락 메뉴 추가
-        if not rows:
-            terms = _build_search_terms(normalized, clean_name)
-            collected = {}
-            half = max(2, len(normalized) // 2)
-            for term in terms:
-                cur.execute(
-                    "SELECT id, name FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
-                    (f"%{term}%",)
-                )
-                for row in cur.fetchall():
-                    if row[0] not in collected:
-                        collected[row[0]] = row
-                if collected and len(term) <= half:
-                    break
-            rows = list(collected.values())
+    # 장바구니에 있는 항목 중에서 매칭 (menu 전체가 아닌 cart 기준)
+    and_conditions = " AND ".join(["REPLACE_SPACE(m.name) LIKE ?" for _ in tokens])
+    cur.execute(
+        f"""SELECT m.id, m.name FROM cart c
+            JOIN menu m ON c.menu_id = m.id
+            WHERE c.session_id = ? AND {and_conditions}""",
+        [session_id] + [f"%{t}%" for t in tokens]
+    )
+    rows = cur.fetchall()
 
     if not rows:
         conn.close()
-        return f"'{item_name}' 메뉴를 찾을 수 없습니다."
+        return f"장바구니에 '{item_name}'에 해당하는 메뉴가 없습니다."
 
     # 여러 메뉴가 매칭되면 선택지 반환
     if len(rows) > 1:
@@ -193,15 +169,12 @@ def remove_from_cart(item_name: str) -> str:
         options = "\n".join([f"- {name}" for _, name in rows])
         return f"'{item_name}'에 해당하는 메뉴가 여러 개 있습니다. 어떤 메뉴를 취소하시겠어요?\n{options}"
 
-    menu_id = rows[0][0]
-    cur.execute("DELETE FROM cart WHERE session_id = ? AND menu_id = ?", (current_session_id.get(), menu_id))
-    affected = cur.rowcount
+    menu_id, actual_name = rows[0]
+    cur.execute("DELETE FROM cart WHERE session_id = ? AND menu_id = ?", (session_id, menu_id))
     conn.commit()
     conn.close()
 
-    if affected == 0:
-        return f"{item_name}이 장바구니에 없습니다."
-    return f"{item_name}을 장바구니에서 제거했습니다."
+    return f"{actual_name}을(를) 장바구니에서 제거했습니다."
 
 
 @tool
