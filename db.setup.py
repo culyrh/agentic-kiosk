@@ -3,47 +3,49 @@
 # =====================================================
 # 이 파일이 하는 일
 # =====================================================
-# 현재 ria_menu.db에는 단품 메뉴(menu 테이블)만 있어.
-# 이 스크립트를 실행하면 아래 작업을 순서대로 진행해:
+# ria_menu.db에 필요한 테이블을 생성합니다.
 #
-# 1. 기존 menu 테이블에 컬럼 2개 추가
-#    - spicy_level      : 매운맛 단계 (0~3), AI 추천에 활용
-#    - is_set_available : 세트 가능 여부 (0=불가, 1=가능)
+# 생성 테이블 목록:
+# 1. menu 테이블 컬럼 추가
+#    - spicy_level : 매운맛 단계 (0~3), AI 추천에 활용
 #
-# 2. options 테이블 생성
-#    - 세트 구성할 때 고를 수 있는 선택지 목록
-#    - 예: 콜라(D01), 사이다(D02), 포테이토(S01) 등
+# 2. options 테이블
+#    - 세트 구성 선택지 (드링크/사이드/토핑)
+#    - option_type: 드링크(D), 사이드(S), 토핑(T)
+#    - 예: 콜라(D01), 포테이토(S01), 치즈토핑(T01)
 #
-# 3. set_menus 테이블 생성
-#    - 어떤 버거가 세트로 팔리는지 + 세트 가격
-#    - 예: 리아불고기 세트 7,500원
+# 3. set_menus 테이블
+#    - 버거 세트 메뉴 정보
+#    - set_price: 단품가격 + 2,000원
+#    - burger_menu_id: menu 테이블의 버거 id 참조
+#    - calorie: 세트 기준 열량 범위
 #
-# 4. set_options 테이블 생성
-#    - 어떤 세트에서 어떤 옵션을 고를 수 있는지 연결
-#    - 예: 리아불고기 세트 → 콜라, 사이다, 포테이토 선택 가능
+# 4. set_options 테이블
+#    - 세트-옵션 연결 테이블
+#    - 토핑은 제외, 드링크/사이드만 연결
+#    - 예: 리아불고기 세트 → 콜라, 포테이토 선택 가능
 #
-# 5. cart 테이블 생성
-#    - 사용자가 현재 담아놓은 장바구니 항목
-#    - 세트인지 단품인지, 어떤 옵션 골랐는지 저장
+# 5. cart 테이블
+#    - 주문 중인 장바구니 항목
+#    - is_set: 세트 여부 (0=단품, 1=세트)
+#    - 세트인 경우 drink_option, side_option 저장
 #
-# 6. orders 테이블 생성
-#    - 결제 완료된 최종 주문 내역 저장
-#    - 결제 수단, 총 금액, 결제 상태 등
+# 6. orders 테이블
+#    - 결제 완료된 주문 내역
+#    - status: pending → paid
 #
-# 7. sessions 테이블 생성
-#    - 현재 대화 상태 저장 (방식 2 - 백엔드가 상태 관리)
-#    - AI가 "그걸로 줘" 같은 표현 처리할 때 활용
-#    - 예: last_recommended = "핫크리스피버거"
+# 7. sessions 테이블
+#    - AI 대화 상태 관리
+#    - last_recommended: 마지막 추천 메뉴명
+#    - current_state: browsing → ordering → paying → done
 #
-# ※ 이 스크립트는 최초 1번만 실행하면 돼!
-#    이미 테이블이 있으면 스킵하고 넘어가니까
-#    실수로 두 번 실행해도 괜찮아.
+# ※ 이미 테이블이 있으면 스킵하므로
+#    여러 번 실행해도 괜찮습니다.
 # =====================================================
 
 import sqlite3
-import json
 
-conn = sqlite3.connect("ria_menu.db")
+conn = sqlite3.connect("data/ria_menu.db")
 cursor = conn.cursor()
 
 # 1. menu 테이블에 컬럼 추가
@@ -53,12 +55,6 @@ try:
     print("   spicy_level 추가 완료")
 except:
     print("   spicy_level 이미 있음 (스킵)")
-
-try:
-    cursor.execute("ALTER TABLE menu ADD COLUMN is_set_available INTEGER DEFAULT 0")
-    print("   is_set_available 추가 완료")
-except:
-    print("   is_set_available 이미 있음 (스킵)")
 
 # 2. options 테이블 생성
 print("2. options 테이블 생성 중...")
@@ -80,7 +76,12 @@ cursor.execute("""
         set_id         INTEGER PRIMARY KEY AUTOINCREMENT,
         burger_menu_id INTEGER,
         name           TEXT,
-        set_price      INTEGER,
+        set_price      TEXT,
+        description    TEXT DEFAULT '',
+        img_url        TEXT DEFAULT '',
+        allergy        TEXT DEFAULT '',
+        origin         TEXT DEFAULT '',
+        calorie        TEXT DEFAULT '',
         FOREIGN KEY (burger_menu_id) REFERENCES menu(id)
     )
 """)

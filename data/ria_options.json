@@ -38,10 +38,6 @@
   {"option_id":"S16","option_type":"사이드","menu_id":505,"name":"토네이도 초코쿠키","extra_price":1200},
   {"option_id":"S17","option_type":"사이드","menu_id":507,"name":"토네이도 더블초코","extra_price":1200},
   {"option_id":"S18","option_type":"사이드","menu_id":504,"name":"토네이도 망고젤리","extra_price":1200},
-  {"option_id":"S19","option_type":"사이드","menu_id":203,"name":"양념너겟","extra_price":1300},
+  {"option_id":"S19","option_type":"사이드","menu_id":203,"name":"양념너겟","extra_price":1300}
 
-  {"option_id":"T01","option_type":"토핑","menu_id":601,"name":"치즈토핑","extra_price":500},
-  {"option_id":"T02","option_type":"토핑","menu_id":602,"name":"토마토토핑","extra_price":500},
-  {"option_id":"T03","option_type":"토핑","menu_id":603,"name":"베이컨토핑","extra_price":700},
-  {"option_id":"T04","option_type":"토핑","menu_id":604,"name":"비프패티토핑","extra_price":1500}
 ]

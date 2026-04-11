@@ -5,6 +5,7 @@
 ---
 
 ## 시스템 동작 구조
+
 ```
 사용자 음성
 ↓
@@ -35,10 +36,10 @@ TTS
 
 | 테이블 | 역할 | 데이터 수 |
 |--------|------|-----------|
-| menu | 단품 메뉴 전체 | 82개 |
-| options | 세트 구성 선택지 (드링크/사이드/토핑) | 43개 |
+| menu | 단품 메뉴 전체 | 78개 |
+| options | 세트 구성 선택지 (드링크/사이드/토핑) | 39개 |
 | set_menus | 버거별 세트 구성 및 가격 | 23개 |
-| set_options | 세트-옵션 연결 | 989개 |
+| set_options | 세트-옵션 연결 (토핑 제외) | 897개 |
 | cart | 주문 중인 장바구니 (주문 시 채워짐) | - |
 | orders | 결제 완료된 주문 내역 | - |
 | sessions | 현재 대화 상태 저장 | - |
@@ -54,8 +55,102 @@ TTS
 | 아이스샷 | 501 ~ 599 |
 | 토핑 | 601 ~ 699 |
 
+### JSON 데이터 구조
+
+**단품 메뉴 (ria_menu.json)**
+```json
+{
+  "id": 101,
+  "category": "버거",
+  "name": "통다리 크리스피치킨버거(파이어핫)",
+  "badge": ["NEW"],
+  "price": "6,900",
+  "description": "...",
+  "allergy": "달걀, 밀, 대두, ...",
+  "origin": "닭고기 - 브라질산",
+  "nutrition": {"총중량": "231", "열량": "594", ...},
+  "img_url": "https://...",
+  "spicy_level": 0
+}
+```
+
+**세트 메뉴 (ria_sets.json)**
+```json
+{
+  "name": "통다리 크리스피치킨버거세트(파이어핫)",
+  "burger_menu_id": 101,
+  "set_price": "8,900",
+  "img_url": "https://...",
+  "allergy": "달걀, 밀, 대두, ...",
+  "origin": "닭고기 - 브라질산",
+  "calorie": "706kcal ~ 1431kcal",
+  "set_id": 23
+}
+```
+
+**옵션 (ria_options.json)**
+```json
+{"option_id": "D01", "option_type": "드링크", "menu_id": 401, "name": "콜라", "extra_price": 0}
+```
+
 ---
 
+## API 명세
+
+서버 실행:
+```bash
+uvicorn api.main:app --reload
+```
+
+Swagger UI: http://127.0.0.1:8000/docs
+
+### 메뉴
+| Method | URL | 설명 |
+|--------|-----|------|
+| GET | /menu | 전체 메뉴 조회 |
+| GET | /menu?category=버거 | 카테고리 필터 |
+| GET | /menu?q=불고기 | 키워드 검색 |
+| GET | /menu/{id} | 단건 조회 |
+| GET | /menu/{id}/set | 세트 조회 |
+
+### 장바구니
+| Method | URL | 설명 |
+|--------|-----|------|
+| GET | /cart/{session_id} | 장바구니 조회 |
+| POST | /cart | 장바구니 담기 |
+| PUT | /cart/{cart_id} | 수량 수정 |
+| DELETE | /cart/{cart_id} | 항목 삭제 |
+| DELETE | /cart/session/{session_id} | 전체 비우기 |
+
+### 주문
+| Method | URL | 설명 |
+|--------|-----|------|
+| POST | /order | 주문 생성 |
+| POST | /order/{order_id}/payment | 결제 |
+| GET | /order/{session_id} | 주문 내역 조회 |
+
+### 세션
+| Method | URL | 설명 |
+|--------|-----|------|
+| POST | /session/{session_id} | 세션 생성 |
+| GET | /session/{session_id} | 세션 조회 |
+| PUT | /session/{session_id} | 세션 업데이트 |
+
+### RAG 검색
+| Method | URL | 설명 |
+|--------|-----|------|
+| POST | /search | 자연어 메뉴 검색 |
+
+#### POST /search 요청 예시
+```json
+{
+  "query": "치즈 들어가는 햄버거 추천해줘",
+  "k": 5,
+  "score_threshold": 0.5
+}
+```
+
+---
 
 ## 환경 세팅
 
@@ -89,6 +184,7 @@ OPENAI_API_KEY=sk-...
 ---
 
 ## DB 초기화 (최초 1회)
+
 ```bash
 # 1. 테이블 생성
 python db_setup.py
@@ -97,153 +193,69 @@ python db_setup.py
 python insert_data.py
 ```
 
----
+### 세트 메뉴 크롤링 (최초 1회)
 
-## RAG 메뉴 검색 테스트
-
-`ria_menu.json` → ChromaDB 임베딩 저장 → 유사도 검색까지 테스트합니다.
-```bash
-python test.py
-```
-
-처음 실행 시 ChromaDB가 생성됩니다. 이후 실행부터는 기존 DB에 upsert됩니다.
-
-> ⚠️ 현재 test.py는 매번 실행 시 모델을 새로 로드하므로 속도가 느립니다.
-> FastAPI 서버에 붙이면 모델이 메모리에 유지되어 속도가 개선됩니다.
-
----
-
-## AI 에이전트 Tool 함수 목록
-
-LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
-
-| 함수 | 파일 | 기능 |
-|------|------|------|
-| `search_menu` | menu_tools.py | RAG 기반 메뉴 검색 |
-| `get_menu_by_price` | menu_tools.py | 가격 기준 메뉴 조회 (최저/최고/예산 범위) |
-| `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
-| `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |
-| `remove_from_cart` | cart_tools.py | 장바구니에서 특정 메뉴 제거 |
-| `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
-| `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
-| `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
-
-<br>
-
-DB 담당이랑 확인 후 추가될 수 있는 것:
-
-| 함수 | 기능 |
-|------|------|
-|세트 메뉴 주문 | add_to_cart에 is_set, side_option, drink_option 처리 |
-
----
-
-## STT (음성 인식)
-
-허깅페이스 허브에서 Whisper 모델을 로컬로 다운로드해 추론합니다. OpenAI API를 사용하지 않습니다.
-
-- 모델: `Systran/faster-whisper-{size}`
-- 처음 실행 시 자동 다운로드, 이후 캐시에서 로드
-
-### 모델 크기 선택
-
-| 모델 | 다운로드 크기 | 속도 | 한국어 정확도 |
-|------|-------------|------|--------------|
-| small | ~500MB | 빠름 | 보통 |
-| medium | ~1.5GB | 중간 | 좋음 |
-| large-v3 | ~3GB | 느림 | 매우 좋음 |
-| large-v3-turbo | ~1.6GB | 중간 | 매우 좋음 |
-
-### 녹음파일 인식
+세트 메뉴 데이터가 없거나 업데이트가 필요할 때 실행합니다.
 
 ```bash
-# 기본 (medium 모델)
-python voice/stt.py tests/뉴스녹음.m4a
+# 세트 정보 크롤링 (알레르기, 열량, 원산지)
+python crawling/crawling_set.py
 
-# 모델 크기 지정
-python voice/stt.py tests/뉴스녹음.m4a small
-python voice/stt.py tests/뉴스녹음.m4a large-v3
-python voice/stt.py tests/뉴스녹음.m4a large-v3-turbo
+# 세트 이미지 크롤링 (셀레니움 필요)
+python crawling/crawling_setimage.py
+
+# 크롤링 후 DB 재삽입
+python insert_data.py
 ```
 
-결과는 터미널에 출력되고 `tests/results/`에 텍스트 파일로 저장됩니다.
-```
-tests/results/뉴스녹음_medium_20260326_210639.txt
-```
-
-### 실시간 음성 인식
-
-마이크로 말하면 발화가 끝나는 시점을 자동으로 감지해 바로 인식합니다.
-
-```bash
-# 기본 (small 모델, 한국어)
-python voice/stt_realtime.py
-
-# 옵션 지정
-python voice/stt_realtime.py --model small --device cpu --language ko
-
-# 주변 소음이 많을 때 (임계값을 높여 잡음 오인식 방지)
-python voice/stt_realtime.py --threshold 0.03
-```
-
-| 옵션 | 기본값 | 설명 |
-|------|--------|------|
-| `--model` | `small` | 모델 크기 (tiny / small / medium / large-v3) |
-| `--device` | `cpu` | 추론 장치 (cpu / cuda) |
-| `--language` | `ko` | 인식 언어 코드 |
-| `--threshold` | `0.01` | 음성 감지 민감도 — 낮을수록 민감, 높을수록 잡음 무시 |
-
-실행하면 마이크 대기 상태가 되고, 말을 마치면 약 0.8초 무음 후 자동으로 인식해 출력합니다.
+## 프로젝트 구조
 
 ```
-[실시간 STT] 마이크 대기 중... (Ctrl+C로 종료)
-
-[인식] 안녕하세요, 주문하고 싶어요.
-      (1.23초)
-```
-
-`Ctrl+C` 로 종료합니다.
-
----
-
-```text
-sadollar-ai/
+sadollar-kiosk/
 │
-├── data/                          # 데이터 파일 모음
-│   ├── ria_menu.json              # 단품 메뉴 데이터 (82개, 카테고리별 100번대 id)
-│   ├── ria_options.json           # 세트 구성 옵션 (드링크/사이드/토핑 43개)
-│   ├── ria_sets_raw.json          # 세트 메뉴 데이터 (23개)
-│   └── ria_menu.db                # SQLite DB 파일 (gitignore 제외)
+├── api/
+│   ├── main.py                    # FastAPI 서버 진입점
+│   └── routes/
+│       ├── menu.py                # 메뉴 API
+│       ├── cart.py                # 장바구니 API
+│       ├── order.py               # 주문/결제 API
+│       ├── session.py             # 세션 API
+│       └── search.py              # RAG 검색 API
 │
 ├── app/
 │   ├── rag/
 │   │   ├── loader.py              # ria_menu.json → Document 변환
 │   │   ├── vector_store.py        # ChromaDB 임베딩 저장
 │   │   └── chroma.py              # ChromaDB 연결 및 검색
-│   │
 │   └── tools/
 │       ├── menu_tools.py          # 메뉴 검색 도구 (RAG)
 │       └── cart_tools.py          # 장바구니 도구
 │
 ├── crawling/
-│   ├── crawling.py                # 롯데리아 단품 메뉴 크롤링
-│   ├── crawling_sets.py           # 롯데리아 세트 메뉴 크롤링
-│   ├── db.py                      # 크롤링 결과 DB 저장
-│   └── export_js.py               # JS 데이터 추출
+│   ├── crawling.py                # 단품 메뉴 크롤링 → ria_menu.json
+│   ├── crawling_set.py            # 세트 메뉴 크롤링 (이미지 제외) → ria_sets.json
+│   └── crawling_setimage.py       # 세트 이미지 크롤링 → ria_sets.json 업데이트
+│
+├── data/
+│   ├── ria_menu.json              # 단품 메뉴 데이터 (badge 배열, nutrition 딕셔너리)
+│   ├── ria_options.json           # 세트 구성 옵션 (드링크/사이드/토핑)
+│   ├── ria_sets.json              # 세트 메뉴 데이터 (set_price = 단품+2000원)
+│   └── ria_menu.db                # SQLite DB (gitignore 제외)
+│
+├── db/
+│   └── sqlite.py                  # DB 연결 및 쿼리 함수
 │
 ├── voice/
-│   ├── stt.py                 # Whisper STT (파일 인식)
-│   ├── stt_realtime.py        # Whisper STT (실시간 마이크 인식)
-│   └── tts.py                 # TTS
+│   ├── stt.py                     # Whisper STT (파일 인식)
+│   ├── stt_realtime.py            # Whisper STT (실시간)
+│   └── tts.py                     # TTS
 │
 ├── tests/
-│   ├── 뉴스녹음.m4a
-│   └── results/                   # STT 결과 저장 디렉토리
+│   └── results/                   # STT 결과 저장
 │
-├── db_setup.py                    # DB 테이블 생성 스크립트 (최초 1회)
-├── insert_data.py                 # JSON → DB 데이터 삽입 스크립트 (최초 1회)
-├── add_imgurl.py                  # img_url 매칭 스크립트 (최초 1회)
-├── test.py                        # RAG 메뉴 검색 테스트
+├── db_setup.py                    # DB 테이블 생성 (최초 1회)
+├── insert_data.py                 # JSON → DB 삽입 (최초 1회)
+├── test.py                        # ChromaDB 초기화 및 RAG 테스트
 ├── requirements.txt
-└── .env                           # OpenAI API 키 설정 (gitignore 제외)
+└── .env                           # API 키 설정 (gitignore 제외)
 ```
