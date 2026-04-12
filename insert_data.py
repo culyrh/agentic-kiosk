@@ -35,12 +35,10 @@ cursor = conn.cursor()
 # 1. 기존 데이터 전체 삭제
 # =====================================================
 print("1. 기존 데이터 전체 삭제 중...")
-cursor.execute("DELETE FROM set_options")
 cursor.execute("DELETE FROM set_menus")
 cursor.execute("DELETE FROM options")
 cursor.execute("DELETE FROM menu")
 cursor.execute("DELETE FROM sqlite_sequence WHERE name='set_menus'")
-cursor.execute("DELETE FROM sqlite_sequence WHERE name='set_options'")
 print("   삭제 완료")
 
 # =====================================================
@@ -64,7 +62,7 @@ for m in menus:
             m["price"],
             m.get("description", ""),
             m.get("img_url", ""),
-            m.get("allergy", ""),
+            json.dumps(m.get("allergy", []), ensure_ascii=False),
             m.get("origin", ""),
             json.dumps(m.get("nutrition", {}), ensure_ascii=False),
             m.get("spicy_level", 0),
@@ -132,19 +130,6 @@ for s in sets:
     except Exception as e:
         print(f"   ❌ {s['name']} 실패: {e}")
 
-# =====================================================
-# 5. set_options 연결 (드링크/사이드만, 토핑 제외)
-# =====================================================
-print("\n5. set_options 연결 중...")
-for set_id in inserted_sets:
-    for option_id in all_option_ids:
-        try:
-            cursor.execute("""
-                INSERT INTO set_options (set_id, option_id) VALUES (?, ?)
-            """, (set_id, option_id))
-        except Exception as e:
-            print(f"   ❌ set_id:{set_id} - {option_id} 실패: {e}")
-print(f"   ✅ {len(inserted_sets)}개 세트에 옵션 연결 완료")
 
 # =====================================================
 # 저장 및 결과 확인
@@ -158,8 +143,7 @@ cursor.execute("SELECT COUNT(*) FROM options")
 print(f"options 테이블:     {cursor.fetchone()[0]}개")
 cursor.execute("SELECT COUNT(*) FROM set_menus")
 print(f"set_menus 테이블:   {cursor.fetchone()[0]}개")
-cursor.execute("SELECT COUNT(*) FROM set_options")
-print(f"set_options 테이블: {cursor.fetchone()[0]}개")
+
 
 conn.close()
 print("\n✅ 모든 데이터 삽입 완료!")

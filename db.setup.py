@@ -20,21 +20,16 @@
 #    - burger_menu_id: menu 테이블의 버거 id 참조
 #    - calorie: 세트 기준 열량 범위
 #
-# 4. set_options 테이블
-#    - 세트-옵션 연결 테이블
-#    - 토핑은 제외, 드링크/사이드만 연결
-#    - 예: 리아불고기 세트 → 콜라, 포테이토 선택 가능
-#
-# 5. cart 테이블
+# 4. cart 테이블
 #    - 주문 중인 장바구니 항목
 #    - is_set: 세트 여부 (0=단품, 1=세트)
 #    - 세트인 경우 drink_option, side_option 저장
 #
-# 6. orders 테이블
+# 5. orders 테이블
 #    - 결제 완료된 주문 내역
 #    - status: pending → paid
 #
-# 7. sessions 테이블
+# 6. sessions 테이블
 #    - AI 대화 상태 관리
 #    - last_recommended: 마지막 추천 메뉴명
 #    - current_state: browsing → ordering → paying → done
@@ -87,21 +82,8 @@ cursor.execute("""
 """)
 print("   set_menus 테이블 완료")
 
-# 4. set_options 테이블 생성
-print("4. set_options 테이블 생성 중...")
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS set_options (
-        id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        set_id    INTEGER,
-        option_id TEXT,
-        FOREIGN KEY (set_id) REFERENCES set_menus(set_id),
-        FOREIGN KEY (option_id) REFERENCES options(option_id)
-    )
-""")
-print("   set_options 테이블 완료")
-
-# 5. cart 테이블 생성
-print("5. cart 테이블 생성 중...")
+# 4. cart 테이블 생성
+print("4. cart 테이블 생성 중...")
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS cart (
         cart_id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,8 +99,8 @@ cursor.execute("""
 """)
 print("   cart 테이블 완료")
 
-# 6. orders 테이블 생성
-print("6. orders 테이블 생성 중...")
+# 5. orders 테이블 생성
+print("5. orders 테이블 생성 중...")
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS orders (
         order_id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,8 +113,8 @@ cursor.execute("""
 """)
 print("   orders 테이블 완료")
 
-# 7. sessions 테이블 생성
-print("7. sessions 테이블 생성 중...")
+# 6. sessions 테이블 생성
+print("6. sessions 테이블 생성 중...")
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS sessions (
         session_id       TEXT PRIMARY KEY,

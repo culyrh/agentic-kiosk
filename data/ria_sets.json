@@ -2,7 +2,7 @@
   {
     "name": "한우불고기버거 세트",
     "burger_menu_id": 106,
-    "set_price": "11,000",
+    "set_price": 11000,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/2024112020143034_9.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 토마토",
@@ -13,7 +13,7 @@
   {
     "name": "더블 한우불고기 세트",
     "burger_menu_id": 105,
-    "set_price": "15,000",
+    "set_price": 15000,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202227682_0.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 토마토",
@@ -24,7 +24,7 @@
   {
     "name": "리아 불고기 세트",
     "burger_menu_id": 119,
-    "set_price": "7,000",
+    "set_price": 7000,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/03/19/20250319132202660_0.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 토마토, 돼지고기",
@@ -35,7 +35,7 @@
   {
     "name": "리아 불고기 더블 세트(빅불)",
     "burger_menu_id": 112,
-    "set_price": "9,600",
+    "set_price": 9600,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/03/19/2025031913205335_9.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 토마토, 돼지고기",
@@ -46,7 +46,7 @@
   {
     "name": "리아 새우 세트",
     "burger_menu_id": 120,
-    "set_price": "7,000",
+    "set_price": 7000,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/03/19/20250319132142747_2.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 토마토, 새우",
@@ -57,7 +57,7 @@
   {
     "name": "리아 사각새우 더블 세트",
     "burger_menu_id": 117,
-    "set_price": "8,100",
+    "set_price": 8100,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202309691_2.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 토마토, 새우",
@@ -68,7 +68,7 @@
   {
     "name": "모짜렐라인더버거 베이컨 세트(버터번)",
     "burger_menu_id": 115,
-    "set_price": "10,000",
+    "set_price": 10000,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202807700_8.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 돼지고기",
@@ -79,7 +79,7 @@
   {
     "name": "더블엑스투버거 세트",
     "burger_menu_id": 111,
-    "set_price": "9,200",
+    "set_price": 9200,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202354482_3.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 토마토",
@@ -90,7 +90,7 @@
   {
     "name": "핫크리스피치킨버거 세트",
     "burger_menu_id": 116,
-    "set_price": "8,200",
+    "set_price": 8200,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/03/19/20250319132109790_9.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 닭고기, 토마토",
@@ -101,7 +101,7 @@
   {
     "name": "NEW 미라클버거 세트",
     "burger_menu_id": 113,
-    "set_price": "7,700",
+    "set_price": 7700,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/10/14/20251014142330679_2.png",
     "description": "",
     "allergy": "밀, 대두, 토마토",
@@ -112,7 +112,7 @@
   {
     "name": "NEW 더블 미라클버거 세트",
     "burger_menu_id": 114,
-    "set_price": "9,200",
+    "set_price": 9200,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/10/14/2025101414240964_3.png",
     "description": "",
     "allergy": "밀, 대두, 토마토",
@@ -123,7 +123,7 @@
   {
     "name": "클래식치즈버거 세트 (버터번)",
     "burger_menu_id": 118,
-    "set_price": "7,500",
+    "set_price": 7500,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202253333_2.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기",
@@ -134,7 +134,7 @@
   {
     "name": "더블 클래식치즈버거 세트",
     "burger_menu_id": 107,
-    "set_price": "9,200",
+    "set_price": 9200,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202906233_0.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기",
@@ -145,7 +145,7 @@
   {
     "name": "치킨버거 세트",
     "burger_menu_id": 122,
-    "set_price": "6,300",
+    "set_price": 6300,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202344511_0.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 닭고기, 땅콩, 조개류(가리비)",
@@ -156,7 +156,7 @@
   {
     "name": "더블 치킨버거 세트",
     "burger_menu_id": 109,
-    "set_price": "7,800",
+    "set_price": 7800,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202847755_8.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 닭고기, 땅콩, 조개류(가리비)",
@@ -167,7 +167,7 @@
   {
     "name": "치킨버거 세트 (N)",
     "burger_menu_id": 121,
-    "set_price": "6,300",
+    "set_price": 6300,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/11/20/20251120160655155_4.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 닭고기, 땅콩, 조개류(가리비)",
@@ -178,7 +178,7 @@
   {
     "name": "더블 치킨버거 세트 (N)",
     "burger_menu_id": 108,
-    "set_price": "7,800",
+    "set_price": 7800,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/11/20/20251120160710908_1.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 닭고기, 땅콩, 조개류(가리비)",
@@ -189,7 +189,7 @@
   {
     "name": "데리버거 세트",
     "burger_menu_id": 123,
-    "set_price": "5,700",
+    "set_price": 5700,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202326268_8.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 조개류(가리비)",
@@ -200,7 +200,7 @@
   {
     "name": "더블 데리버거 세트",
     "burger_menu_id": 110,
-    "set_price": "7,000",
+    "set_price": 7000,
     "img_url": "https://img.lotteeatz.com/upload/product/2024/11/20/20241120202834322_0.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 조개류(가리비)",
@@ -211,7 +211,7 @@
   {
     "name": "모짜렐라버거세트 토마토바질 세트",
     "burger_menu_id": 104,
-    "set_price": "11,100",
+    "set_price": 11100,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/01/15/2025011516284430_5.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 토마토",
@@ -222,7 +222,7 @@
   {
     "name": "모짜렐라버거세트 발사믹바질 세트",
     "burger_menu_id": 103,
-    "set_price": "11,100",
+    "set_price": 11100,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/01/15/2025011516323958_2.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 토마토, 아황산류",
@@ -233,7 +233,7 @@
   {
     "name": "통다리 크리스피치킨버거세트(그릭랜치)",
     "burger_menu_id": 102,
-    "set_price": "8,900",
+    "set_price": 8900,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/12/30/20251230093031249_9.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 조개류(굴)",
@@ -244,7 +244,7 @@
   {
     "name": "통다리 크리스피치킨버거세트(파이어핫)",
     "burger_menu_id": 101,
-    "set_price": "8,900",
+    "set_price": 8900,
     "img_url": "https://img.lotteeatz.com/upload/product/2025/12/30/20251230093107925_0.png",
     "description": "",
     "allergy": "달걀, 밀, 대두, 우유, 쇠고기, 닭고기, 조개류(굴)",

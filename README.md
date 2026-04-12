@@ -37,12 +37,84 @@ TTS
 | 테이블 | 역할 | 데이터 수 |
 |--------|------|-----------|
 | menu | 단품 메뉴 전체 | 78개 |
-| options | 세트 구성 선택지 (드링크/사이드/토핑) | 39개 |
+| options | 세트 구성 선택지 (드링크/사이드) | 41개 |
 | set_menus | 버거별 세트 구성 및 가격 | 23개 |
-| set_options | 세트-옵션 연결 (토핑 제외) | 897개 |
 | cart | 주문 중인 장바구니 (주문 시 채워짐) | - |
 | orders | 결제 완료된 주문 내역 | - |
 | sessions | 현재 대화 상태 저장 | - |
+
+> **set_options 테이블을 제거한 이유**
+> 초기 설계에서는 세트별로 선택 가능한 옵션을 미리 연결하는 set_options 테이블을 두었으나,
+> 롯데리아의 모든 세트는 동일한 음료/사이드 옵션을 제공하므로 불필요한 중복 데이터가 발생했습니다.
+> 대신 세트 주문 시 cart 테이블의 drink_option, side_option 컬럼에 선택값을 저장하는 방식으로 단순화했습니다.
+
+### 테이블 상세 구조
+
+**menu 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| id | INTEGER | 카테고리별 100번대 고유 ID |
+| category | TEXT | 버거/디저트/치킨/음료/아이스샷/토핑 |
+| name | TEXT | 메뉴명 |
+| badge | TEXT | 뱃지 배열 JSON (예: ["NEW", "BEST"]) |
+| price | INTEGER | 단품 가격 (정수) |
+| description | TEXT | 메뉴 설명 |
+| img_url | TEXT | 이미지 URL |
+| allergy | TEXT | 알레르기 배열 JSON (예: ["달걀", "밀"]) |
+| origin | TEXT | 원산지 정보 |
+| nutrition | TEXT | 영양정보 딕셔너리 JSON |
+| spicy_level | INTEGER | 매운맛 단계 (0~3) |
+
+**options 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| option_id | TEXT | D01~D20 (드링크), S01~S21 (사이드) |
+| option_type | TEXT | 드링크 / 사이드 |
+| menu_id | INTEGER | menu 테이블 참조 |
+| extra_price | INTEGER | 기본 옵션 대비 추가 금액 |
+
+**set_menus 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| set_id | INTEGER | 세트 고유 ID (자동 증가) |
+| burger_menu_id | INTEGER | menu 테이블의 버거 ID 참조 |
+| name | TEXT | 세트명 |
+| set_price | INTEGER | 세트 가격 (단품 + 2,000원) |
+| description | TEXT | 세트 설명 |
+| img_url | TEXT | 세트 이미지 URL |
+| allergy | TEXT | 알레르기 정보 |
+| origin | TEXT | 원산지 정보 |
+| calorie | TEXT | 열량 범위 (예: 706kcal ~ 1431kcal) |
+
+**cart 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| cart_id | INTEGER | 장바구니 항목 ID (자동 증가) |
+| session_id | TEXT | 세션 ID |
+| menu_id | INTEGER | menu 테이블 참조 |
+| is_set | INTEGER | 세트 여부 (0=단품, 1=세트) |
+| drink_option | TEXT | 선택한 드링크 option_id |
+| side_option | TEXT | 선택한 사이드 option_id |
+| quantity | INTEGER | 수량 |
+| unit_price | INTEGER | 단가 |
+
+**orders 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| order_id | INTEGER | 주문 ID (자동 증가) |
+| session_id | TEXT | 세션 ID |
+| total_price | INTEGER | 총 결제 금액 |
+| payment_method | TEXT | 결제 수단 |
+| status | TEXT | pending → paid |
+| created_at | TEXT | 주문 시각 |
+
+**sessions 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| session_id | TEXT | 세션 ID |
+| current_state | TEXT | browsing → ordering → paying → done |
+| last_recommended | TEXT | 마지막 추천 메뉴명 |
+| updated_at | TEXT | 마지막 업데이트 시각 |
 
 ### 메뉴 ID 체계 (카테고리별 100번대)
 
@@ -64,11 +136,11 @@ TTS
   "category": "버거",
   "name": "통다리 크리스피치킨버거(파이어핫)",
   "badge": ["NEW"],
-  "price": "6,900",
+  "price": 6900,
   "description": "...",
-  "allergy": "달걀, 밀, 대두, ...",
+  "allergy": ["달걀", "밀", "대두"],
   "origin": "닭고기 - 브라질산",
-  "nutrition": {"총중량": "231", "열량": "594", ...},
+  "nutrition": {"총중량": "231", "열량": "594"},
   "img_url": "https://...",
   "spicy_level": 0
 }
@@ -79,7 +151,7 @@ TTS
 {
   "name": "통다리 크리스피치킨버거세트(파이어핫)",
   "burger_menu_id": 101,
-  "set_price": "8,900",
+  "set_price": 8900,
   "img_url": "https://...",
   "allergy": "달걀, 밀, 대두, ...",
   "origin": "닭고기 - 브라질산",
@@ -206,7 +278,42 @@ python crawling/crawling_setimage.py
 
 # 크롤링 후 DB 재삽입
 python insert_data.py
+
+# 일부 데이터는 직접 입력함
 ```
+
+
+
+---
+
+## RAG 메뉴 검색 (ChromaDB 초기화)
+
+FastAPI 서버 실행 전 최초 1회 실행해서 ChromaDB를 생성해야 합니다.
+```bash
+python test.py
+```
+
+이후 서버 실행 시 ChromaDB가 메모리에 유지되어 빠르게 검색됩니다.
+
+---
+
+## AI 에이전트 Tool 함수 목록
+
+LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
+
+| 함수 | 파일 | 기능 |
+|------|------|------|
+| `search_menu` | menu_tools.py | RAG 기반 메뉴 검색 |
+| `get_menu_by_price` | menu_tools.py | 가격 기준 메뉴 조회 |
+| `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
+| `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |
+| `remove_from_cart` | cart_tools.py | 장바구니에서 특정 메뉴 제거 |
+| `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
+| `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
+| `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
+
+---
+
 
 ## 프로젝트 구조
 
@@ -237,9 +344,9 @@ sadollar-kiosk/
 │   └── crawling_setimage.py       # 세트 이미지 크롤링 → ria_sets.json 업데이트
 │
 ├── data/
-│   ├── ria_menu.json              # 단품 메뉴 데이터 (badge 배열, nutrition 딕셔너리)
-│   ├── ria_options.json           # 세트 구성 옵션 (드링크/사이드/토핑)
-│   ├── ria_sets.json              # 세트 메뉴 데이터 (set_price = 단품+2000원)
+│   ├── ria_menu.json              # 단품 메뉴 (price/badge/allergy 정수·배열 형태)
+│   ├── ria_options.json           # 세트 구성 옵션 (드링크/사이드)
+│   ├── ria_sets.json              # 세트 메뉴 (set_price = 단품+2,000원)
 │   └── ria_menu.db                # SQLite DB (gitignore 제외)
 │
 ├── db/
