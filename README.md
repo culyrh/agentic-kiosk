@@ -56,6 +56,7 @@ sadollar-ai/
 ---
 
 ## 시스템 동작 구조
+
 ```
 사용자 음성
 ↓
@@ -137,13 +138,85 @@ TTS
 
 | 테이블 | 역할 | 데이터 수 |
 |--------|------|-----------|
-| menu | 단품 메뉴 전체 | 82개 |
-| options | 세트 구성 선택지 (드링크/사이드/토핑) | 43개 |
+| menu | 단품 메뉴 전체 | 78개 |
+| options | 세트 구성 선택지 (드링크/사이드) | 41개 |
 | set_menus | 버거별 세트 구성 및 가격 | 23개 |
-| set_options | 세트-옵션 연결 | 989개 |
 | cart | 주문 중인 장바구니 (주문 시 채워짐) | - |
 | orders | 결제 완료된 주문 내역 | - |
 | sessions | 현재 대화 상태 저장 | - |
+
+> **set_options 테이블을 제거한 이유**
+> 초기 설계에서는 세트별로 선택 가능한 옵션을 미리 연결하는 set_options 테이블을 두었으나,
+> 롯데리아의 모든 세트는 동일한 음료/사이드 옵션을 제공하므로 불필요한 중복 데이터가 발생했습니다.
+> 대신 세트 주문 시 cart 테이블의 drink_option, side_option 컬럼에 선택값을 저장하는 방식으로 단순화했습니다.
+
+### 테이블 상세 구조
+
+**menu 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| id | INTEGER | 카테고리별 100번대 고유 ID |
+| category | TEXT | 버거/디저트/치킨/음료/아이스샷/토핑 |
+| name | TEXT | 메뉴명 |
+| badge | TEXT | 뱃지 배열 JSON (예: ["NEW", "BEST"]) |
+| price | INTEGER | 단품 가격 (정수) |
+| description | TEXT | 메뉴 설명 |
+| img_url | TEXT | 이미지 URL |
+| allergy | TEXT | 알레르기 배열 JSON (예: ["달걀", "밀"]) |
+| origin | TEXT | 원산지 정보 |
+| nutrition | TEXT | 영양정보 딕셔너리 JSON |
+| spicy_level | INTEGER | 매운맛 단계 (0~3) |
+
+**options 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| option_id | TEXT | D01~D20 (드링크), S01~S21 (사이드) |
+| option_type | TEXT | 드링크 / 사이드 |
+| menu_id | INTEGER | menu 테이블 참조 |
+| extra_price | INTEGER | 기본 옵션 대비 추가 금액 |
+
+**set_menus 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| set_id | INTEGER | 세트 고유 ID (자동 증가) |
+| burger_menu_id | INTEGER | menu 테이블의 버거 ID 참조 |
+| name | TEXT | 세트명 |
+| set_price | INTEGER | 세트 가격 (단품 + 2,000원) |
+| description | TEXT | 세트 설명 |
+| img_url | TEXT | 세트 이미지 URL |
+| allergy | TEXT | 알레르기 정보 |
+| origin | TEXT | 원산지 정보 |
+| calorie | TEXT | 열량 범위 (예: 706kcal ~ 1431kcal) |
+
+**cart 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| cart_id | INTEGER | 장바구니 항목 ID (자동 증가) |
+| session_id | TEXT | 세션 ID |
+| menu_id | INTEGER | menu 테이블 참조 |
+| is_set | INTEGER | 세트 여부 (0=단품, 1=세트) |
+| drink_option | TEXT | 선택한 드링크 option_id |
+| side_option | TEXT | 선택한 사이드 option_id |
+| quantity | INTEGER | 수량 |
+| unit_price | INTEGER | 단가 |
+
+**orders 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| order_id | INTEGER | 주문 ID (자동 증가) |
+| session_id | TEXT | 세션 ID |
+| total_price | INTEGER | 총 결제 금액 |
+| payment_method | TEXT | 결제 수단 |
+| status | TEXT | pending → paid |
+| created_at | TEXT | 주문 시각 |
+
+**sessions 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| session_id | TEXT | 세션 ID |
+| current_state | TEXT | browsing → ordering → paying → done |
+| last_recommended | TEXT | 마지막 추천 메뉴명 |
+| updated_at | TEXT | 마지막 업데이트 시각 |
 
 ### 메뉴 ID 체계 (카테고리별 100번대)
 
@@ -155,6 +228,101 @@ TTS
 | 음료 | 401 ~ 499 |
 | 아이스샷 | 501 ~ 599 |
 | 토핑 | 601 ~ 699 |
+
+### JSON 데이터 구조
+
+**단품 메뉴 (ria_menu.json)**
+```json
+{
+  "id": 101,
+  "category": "버거",
+  "name": "통다리 크리스피치킨버거(파이어핫)",
+  "badge": ["NEW"],
+  "price": 6900,
+  "description": "...",
+  "allergy": ["달걀", "밀", "대두"],
+  "origin": "닭고기 - 브라질산",
+  "nutrition": {"총중량": "231", "열량": "594"},
+  "img_url": "https://...",
+  "spicy_level": 0
+}
+```
+
+**세트 메뉴 (ria_sets.json)**
+```json
+{
+  "name": "통다리 크리스피치킨버거세트(파이어핫)",
+  "burger_menu_id": 101,
+  "set_price": 8900,
+  "img_url": "https://...",
+  "allergy": "달걀, 밀, 대두, ...",
+  "origin": "닭고기 - 브라질산",
+  "calorie": "706kcal ~ 1431kcal",
+  "set_id": 23
+}
+```
+
+**옵션 (ria_options.json)**
+```json
+{"option_id": "D01", "option_type": "드링크", "menu_id": 401, "name": "콜라", "extra_price": 0}
+```
+
+---
+
+## API 명세
+
+서버 실행:
+```bash
+uvicorn api.main:app --reload
+```
+
+Swagger UI: http://127.0.0.1:8000/docs
+
+### 메뉴
+| Method | URL | 설명 |
+|--------|-----|------|
+| GET | /menu | 전체 메뉴 조회 |
+| GET | /menu?category=버거 | 카테고리 필터 |
+| GET | /menu?q=불고기 | 키워드 검색 |
+| GET | /menu/{id} | 단건 조회 |
+| GET | /menu/{id}/set | 세트 조회 |
+
+### 장바구니
+| Method | URL | 설명 |
+|--------|-----|------|
+| GET | /cart/{session_id} | 장바구니 조회 |
+| POST | /cart | 장바구니 담기 |
+| PUT | /cart/{cart_id} | 수량 수정 |
+| DELETE | /cart/{cart_id} | 항목 삭제 |
+| DELETE | /cart/session/{session_id} | 전체 비우기 |
+
+### 주문
+| Method | URL | 설명 |
+|--------|-----|------|
+| POST | /order | 주문 생성 |
+| POST | /order/{order_id}/payment | 결제 |
+| GET | /order/{session_id} | 주문 내역 조회 |
+
+### 세션
+| Method | URL | 설명 |
+|--------|-----|------|
+| POST | /session/{session_id} | 세션 생성 |
+| GET | /session/{session_id} | 세션 조회 |
+| PUT | /session/{session_id} | 세션 업데이트 |
+
+### RAG 검색
+| Method | URL | 설명 |
+|--------|-----|------|
+| POST | /search | 자연어 메뉴 검색 |
+
+#### POST /search 요청 예시
+```json
+{
+  "query": "치즈 들어가는 햄버거 추천해줘",
+  "k": 5,
+  "score_threshold": 0.5
+}
+```
 
 ---
 
@@ -190,6 +358,7 @@ OPENAI_API_KEY=sk-...
 ---
 
 ## DB 초기화 (최초 1회)
+
 ```bash
 # 1. 테이블 생성
 python db_setup.py
@@ -201,11 +370,30 @@ python add_imgurl.py
 python insert_data.py
 ```
 
+### 세트 메뉴 크롤링 (최초 1회)
+
+세트 메뉴 데이터가 없거나 업데이트가 필요할 때 실행합니다.
+
+```bash
+# 세트 정보 크롤링 (알레르기, 열량, 원산지)
+python crawling/crawling_set.py
+
+# 세트 이미지 크롤링 (셀레니움 필요)
+python crawling/crawling_setimage.py
+
+# 크롤링 후 DB 재삽입
+python insert_data.py
+
+# 일부 데이터는 직접 입력함
+```
+
+
+
 ---
 
-## RAG 메뉴 검색 테스트
+## RAG 메뉴 검색 (ChromaDB 초기화)
 
-`ria_menu.json` → ChromaDB 임베딩 저장 → 유사도 검색까지 테스트합니다.
+FastAPI 서버 실행 전 최초 1회 실행해서 ChromaDB를 생성해야 합니다.
 ```bash
 python test.py
 ```
