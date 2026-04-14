@@ -4,59 +4,63 @@
 
 ---
 
-## 프로젝트 구조
+## 환경 세팅
 
+### 1. Python 버전
 ```
-sadollar-ai/
-│
-├── api/
-│   ├── main.py                    # FastAPI 서버 진입점
-│   └── routes/
-│       ├── menu.py                # 메뉴 API
-│       ├── cart.py                # 장바구니 API
-│       ├── order.py               # 주문/결제 API
-│       ├── session.py             # 세션 API
-│       ├── search.py              # RAG 검색 API
-│       └── stt.py                 # POST /stt/transcribe, WS /stt/ws
-│
-├── app/
-│   ├── rag/
-│   │   ├── loader.py              # ria_menu.json → Document 변환
-│   │   ├── vector_store.py        # ChromaDB 임베딩 저장
-│   │   └── chroma.py              # ChromaDB 연결 및 검색
-│   │
-│   └── tools/
-│       ├── menu_tools.py          # 메뉴 검색 도구 (RAG)
-│       └── cart_tools.py          # 장바구니 도구
-│
-├── crawling/
-│   ├── crawling.py                # 단품 메뉴 크롤링 → ria_menu.json
-│   ├── crawling_set.py            # 세트 메뉴 크롤링 (이미지 제외) → ria_sets.json
-│   └── crawling_setimage.py       # 세트 이미지 크롤링 → ria_sets.json 업데이트
-│
-├── data/                          # 데이터 파일 모음
-│   ├── ria_menu.json              # 단품 메뉴 데이터 (82개, 카테고리별 100번대 id)
-│   ├── ria_options.json           # 세트 구성 옵션 (드링크/사이드/토핑 43개)
-│   ├── ria_sets_raw.json          # 세트 메뉴 데이터 (23개)
-│   └── ria_menu.db                # SQLite DB 파일 (gitignore 제외)
-│
-├── db/
-│   └── sqlite.py                  # DB 연결 및 쿼리 함수
-│
-├── voice/
-│   ├── stt.py                     # Whisper STT (파일 인식)
-│   ├── stt_realtime.py            # Whisper STT (실시간 마이크 인식, listen_once 포함)
-│   └── tts.py                     # TTS
-│
-├── tests/
-│   ├── 뉴스녹음.m4a
-│   └── results/                   # STT 결과 저장 디렉토리
-│
-├── db_setup.py                    # DB 테이블 생성 스크립트 (최초 1회)
-├── insert_data.py                 # JSON → DB 데이터 삽입 스크립트 (최초 1회)
-├── test.py                        # RAG 메뉴 검색 테스트
-├── requirements.txt
-└── .env                           # OpenAI API 키 설정 (gitignore 제외)
+Python 3.10.11 권장
+```
+
+### 2. 가상환경 생성 및 활성화
+```bash
+py -3.10 -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Mac/Linux
+source venv/bin/activate
+```
+
+### 3. 패키지 설치
+```bash
+pip install -r requirements.txt
+```
+
+### 4. 환경변수 설정
+`.env` 파일 생성 후 OpenAI API 키 입력:
+```
+OPENAI_API_KEY=sk-...
+```
+
+### DB 초기화 (최초 1회)
+
+```bash
+# 1. 테이블 생성
+python db_setup.py
+
+# 2. img_url 매칭
+python add_imgurl.py
+
+# 3. JSON 데이터 → DB 삽입
+python insert_data.py
+```
+
+### 세트 메뉴 크롤링 (최초 1회)
+
+세트 메뉴 데이터가 없거나 업데이트가 필요할 때 실행합니다.
+
+```bash
+# 세트 정보 크롤링 (알레르기, 열량, 원산지)
+python crawling/crawling_set.py
+
+# 세트 이미지 크롤링 (셀레니움 필요)
+python crawling/crawling_setimage.py
+
+# 크롤링 후 DB 재삽입
+python insert_data.py
+
+# 일부 데이터는 직접 입력함
 ```
 
 ---
@@ -97,8 +101,6 @@ TTS
 ↓
 음성 출력
 ```
-
-<br>
 
 ### 1. 설계 원칙
 
@@ -233,8 +235,6 @@ TTS
 | last_recommended | TEXT | 마지막 추천 메뉴명 |
 | updated_at | TEXT | 마지막 업데이트 시각 |
 
-<br>
-
 ### 메뉴 ID 체계 (카테고리별 100번대)
 
 | 카테고리 | ID 범위 |
@@ -245,8 +245,6 @@ TTS
 | 음료 | 401 ~ 499 |
 | 아이스샷 | 501 ~ 599 |
 | 토핑 | 601 ~ 699 |
-
-<br>
 
 ### JSON 데이터 구조
 
@@ -349,9 +347,7 @@ Swagger UI: http://127.0.0.1:8000/docs
 }
 ```
 
-#### STT API
-
-**REST — 파일 업로드 (로컬 테스트용)**
+#### POST /stt/transcribe (로컬 테스트용)
 
 Swagger UI(`/docs`)에서 오디오 파일을 직접 업로드해 테스트할 수 있습니다.
 
@@ -361,7 +357,7 @@ POST /stt/transcribe
 반환: {"text": "인식된 텍스트", "language": "ko"}
 ```
 
-**WebSocket — 실시간 스트리밍 (키오스크 브라우저 연동용)**
+#### WS /stt/ws (키오스크 브라우저 연동용)
 
 브라우저에서 마이크 오디오를 float32 PCM 청크(50ms 단위)로 전송하면,
 발화가 끝날 때마다 인식 결과를 JSON으로 반환합니다.
@@ -377,68 +373,6 @@ WS /stt/ws
 
 ---
 
-## 환경 세팅
-
-### 1. Python 버전
-```
-Python 3.10.11 권장
-```
-
-### 2. 가상환경 생성 및 활성화
-```bash
-py -3.10 -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# Mac/Linux
-source venv/bin/activate
-```
-
-### 3. 패키지 설치
-```bash
-pip install -r requirements.txt
-```
-
-### 4. 환경변수 설정
-`.env` 파일 생성 후 OpenAI API 키 입력:
-```
-OPENAI_API_KEY=sk-...
-```
-
----
-
-## DB 초기화 (최초 1회)
-
-```bash
-# 1. 테이블 생성
-python db_setup.py
-
-# 2. img_url 매칭
-python add_imgurl.py
-
-# 3. JSON 데이터 → DB 삽입
-python insert_data.py
-```
-
-### 세트 메뉴 크롤링 (최초 1회)
-
-세트 메뉴 데이터가 없거나 업데이트가 필요할 때 실행합니다.
-
-```bash
-# 세트 정보 크롤링 (알레르기, 열량, 원산지)
-python crawling/crawling_set.py
-
-# 세트 이미지 크롤링 (셀레니움 필요)
-python crawling/crawling_setimage.py
-
-# 크롤링 후 DB 재삽입
-python insert_data.py
-
-# 일부 데이터는 직접 입력함
-```
-
----
 
 ## RAG 메뉴 검색 (ChromaDB 초기화)
 
@@ -536,3 +470,62 @@ python voice/stt_realtime.py --threshold 0.03
 ```
 
 `Ctrl+C` 로 종료합니다.
+
+---
+
+## 프로젝트 구조
+
+```
+sadollar-ai/
+│
+├── api/
+│   ├── main.py                    # FastAPI 서버 진입점
+│   └── routes/
+│       ├── menu.py                # 메뉴 API
+│       ├── cart.py                # 장바구니 API
+│       ├── order.py               # 주문/결제 API
+│       ├── session.py             # 세션 API
+│       ├── search.py              # RAG 검색 API
+│       └── stt.py                 # POST /stt/transcribe, WS /stt/ws
+│
+├── app/
+│   ├── rag/
+│   │   ├── loader.py              # ria_menu.json → Document 변환
+│   │   ├── vector_store.py        # ChromaDB 임베딩 저장
+│   │   └── chroma.py              # ChromaDB 연결 및 검색
+│   │
+│   └── tools/
+│       ├── menu_tools.py          # 메뉴 검색 도구 (RAG)
+│       └── cart_tools.py          # 장바구니 도구
+│
+├── crawling/
+│   ├── crawling.py                # 단품 메뉴 크롤링 → ria_menu.json
+│   ├── crawling_set.py            # 세트 메뉴 크롤링 (이미지 제외) → ria_sets.json
+│   └── crawling_setimage.py       # 세트 이미지 크롤링 → ria_sets.json 업데이트
+│
+├── data/                          # 데이터 파일 모음
+│   ├── ria_menu.json              # 단품 메뉴 데이터 (82개, 카테고리별 100번대 id)
+│   ├── ria_options.json           # 세트 구성 옵션 (드링크/사이드/토핑 43개)
+│   ├── ria_sets_raw.json          # 세트 메뉴 데이터 (23개)
+│   └── ria_menu.db                # SQLite DB 파일 (gitignore 제외)
+│
+├── db/
+│   └── sqlite.py                  # DB 연결 및 쿼리 함수
+│
+├── voice/
+│   ├── stt.py                     # Whisper STT (파일 인식)
+│   ├── stt_realtime.py            # Whisper STT (실시간 마이크 인식, listen_once 포함)
+│   └── tts.py                     # TTS
+│
+├── tests/
+│   ├── 뉴스녹음.m4a
+│   └── results/                   # STT 결과 저장 디렉토리
+│
+├── db_setup.py                    # DB 테이블 생성 스크립트 (최초 1회)
+├── insert_data.py                 # JSON → DB 데이터 삽입 스크립트 (최초 1회)
+├── test.py                        # RAG 메뉴 검색 테스트
+├── requirements.txt
+└── .env                           # OpenAI API 키 설정 (gitignore 제외)
+```
+
+---
