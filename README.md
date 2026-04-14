@@ -6,12 +6,12 @@
 
 ## 환경 세팅
 
-### 1. Python 버전
+### Python 버전
 ```
 Python 3.10.11 권장
 ```
 
-### 2. 가상환경 생성 및 활성화
+### 가상환경 생성 및 활성화
 ```bash
 py -3.10 -m venv venv
 
@@ -22,12 +22,12 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-### 3. 패키지 설치
+### 패키지 설치
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. 환경변수 설정
+### 환경변수 설정
 `.env` 파일 생성 후 OpenAI API 키 입력:
 ```
 OPENAI_API_KEY=sk-...
@@ -109,8 +109,6 @@ TTS
 - **장바구니 추가/제거**: ChromaDB를 거치지 않고 SQLite 이름 매칭으로 직접 처리
 - **장바구니/주문**: SQLite `cart`, `orders` 테이블에서 전담 처리
 
-<br>
-
 ### 2. Self-querying 미적용 이유 및 향후 계획
 
 현재 `search_menu`는 LangChain Self-querying Retriever 대신 **수동 파라미터 추출** 방식을 사용한다.
@@ -127,8 +125,6 @@ TTS
 **Self-querying 도입을 고려할 시점**
 - DB/ChromaDB 스키마 확정 이후
 - "세트 포함 + 8000원 이하 + 매운 버거" 같은 복합 필터 쿼리 실패 케이스가 쌓일 때
-
-<br>
 
 ### 3. 현재 한계 및 향후 개선 계획
 
@@ -359,9 +355,9 @@ POST /stt/transcribe
 
 #### WS /stt/ws (키오스크 브라우저 연동용)
 
-- 브라우저에서 마이크 오디오를 float32 PCM 청크(50ms 단위)로 전송하면, 발화가 끝날 때마다 인식 결과를 JSON으로 반환합니다.
+브라우저에서 마이크 오디오를 float32 PCM 청크(50ms 단위)로 전송하면, 발화가 끝날 때마다 인식 결과를 JSON으로 반환합니다.
 
-- `/stt/ws` 로 받은 `text` 를 AI 에이전트의 입력으로 사용합니다. 에이전트는 이 텍스트를 기반으로 메뉴 검색, 장바구니 추가 등 주문 흐름을 처리합니다.
+`/stt/ws` 로 받은 `text` 를 AI 에이전트의 입력으로 사용합니다. 에이전트는 이 텍스트를 기반으로 메뉴 검색, 장바구니 추가 등 주문 흐름을 처리합니다.
 
 
 ```
