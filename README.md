@@ -1,56 +1,63 @@
 # 🍔 Sadollar Kiosk - AI 음성 주문 키오스크
 
-롯데리아 매장에서 사용자가 음성으로 메뉴를 탐색하고 결제까지 완료할 수 있는 배리어 프리(Barrier-free) 음성 주문 시스템입니다.
+사용자가 음성으로 메뉴를 탐색하고 결제까지 완료할 수 있는 배리어 프리(Barrier-free) 음성 주문 시스템입니다.
 
 ---
 
-## 프로젝트 구조
+## 환경 세팅
+
 ```
-sadollar-ai/
-│
-├── data/                          # 데이터 파일 모음
-│   ├── ria_menu.json              # 단품 메뉴 데이터 (82개, 카테고리별 100번대 id)
-│   ├── ria_options.json           # 세트 구성 옵션 (드링크/사이드/토핑 43개)
-│   ├── ria_sets_raw.json          # 세트 메뉴 데이터 (23개)
-│   └── ria_menu.db                # SQLite DB 파일 (gitignore 제외)
-│
-├── app/
-│   ├── rag/
-│   │   ├── loader.py              # ria_menu.json → Document 변환
-│   │   ├── vector_store.py        # ChromaDB 임베딩 저장
-│   │   └── chroma.py              # ChromaDB 연결 및 검색
-│   │
-│   └── tools/
-│       ├── menu_tools.py          # 메뉴 검색 도구 (RAG)
-│       └── cart_tools.py          # 장바구니 도구
-│
-├── crawling/
-│   ├── crawling.py                # 롯데리아 단품 메뉴 크롤링
-│   ├── crawling_sets.py           # 롯데리아 세트 메뉴 크롤링
-│   ├── db.py                      # 크롤링 결과 DB 저장
-│   └── export_js.py               # JS 데이터 추출
-│
-├── api/
-│   ├── main.py                    # FastAPI 앱 진입점, 라우터 등록
-│   └── routes/
-│       ├── menu.py                # GET /menu, GET /menu/{id}
-│       └── stt.py                 # POST /stt/transcribe, WS /stt/ws
-│
-├── voice/
-│   ├── stt.py                     # Whisper STT (파일 인식)
-│   ├── stt_realtime.py            # Whisper STT (실시간 마이크 인식, listen_once 포함)
-│   └── tts.py                     # TTS
-│
-├── tests/
-│   ├── 뉴스녹음.m4a
-│   └── results/                   # STT 결과 저장 디렉토리
-│
-├── db_setup.py                    # DB 테이블 생성 스크립트 (최초 1회)
-├── insert_data.py                 # JSON → DB 데이터 삽입 스크립트 (최초 1회)
-├── add_imgurl.py                  # img_url 매칭 스크립트 (최초 1회)
-├── test.py                        # RAG 메뉴 검색 테스트
-├── requirements.txt
-└── .env                           # OpenAI API 키 설정 (gitignore 제외)
+Python 3.10.11 권장
+```
+
+### 가상환경 생성 및 활성화
+```bash
+py -3.10 -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# Mac/Linux
+source venv/bin/activate
+```
+
+### 패키지 설치
+```bash
+pip install -r requirements.txt
+```
+
+### 환경변수 설정
+`.env` 파일 생성 후 OpenAI API 키 입력:
+```
+OPENAI_API_KEY=sk-...
+```
+
+### DB 및 ChromaDB 초기화 (최초 1회)
+
+```bash
+# 1. 테이블 생성
+python db_setup.py
+
+# 2. JSON 데이터 → DB 삽입
+python insert_data.py
+
+# 3. ChromaDB 벡터 생성 (메뉴 검색용 임베딩)
+python test.py
+```
+
+### 세트 메뉴 크롤링 (데이터 업데이트 시)
+
+세트 메뉴 데이터가 변경되거나 업데이트가 필요할 때만 실행합니다. `data/` 폴더에 JSON 데이터가 이미 있으면 실행하지 않아도 됩니다.
+
+```bash
+# 세트 정보 크롤링 (알레르기, 열량, 원산지)
+python crawling/crawling_set.py
+
+# 세트 이미지 크롤링 (셀레니움 필요)
+python crawling/crawling_setimage.py
+
+# 크롤링 후 DB 재삽입
+python insert_data.py
 ```
 
 ---
@@ -63,6 +70,8 @@ sadollar-ai/
 STT (Whisper)
 ↓
 텍스트
+↓
+LLM 정제 (GPT-4o-mini) — STT 오인식 교정, 잡음성 발화 정리
 ↓
 AI 에이전트 (LangChain + GPT-4o)
 ↓
@@ -92,13 +101,14 @@ TTS
 음성 출력
 ```
 
-### 설계 원칙
+### 1. 설계 원칙
+
 - **ChromaDB**: `search_menu`에서 의미 기반 쿼리(query 파라미터)가 있을 때만 사용
 - **카테고리 전체 조회**: SQLite LIMIT/OFFSET 페이지네이션으로 처리 (ChromaDB k 제한 우회)
 - **장바구니 추가/제거**: ChromaDB를 거치지 않고 SQLite 이름 매칭으로 직접 처리
 - **장바구니/주문**: SQLite `cart`, `orders` 테이블에서 전담 처리
 
-### Self-querying 미적용 이유 및 향후 계획
+### 2. Self-querying 미적용 이유 및 향후 계획
 
 현재 `search_menu`는 LangChain Self-querying Retriever 대신 **수동 파라미터 추출** 방식을 사용한다.
 
@@ -115,7 +125,7 @@ TTS
 - DB/ChromaDB 스키마 확정 이후
 - "세트 포함 + 8000원 이하 + 매운 버거" 같은 복합 필터 쿼리 실패 케이스가 쌓일 때
 
-### 현재 한계 및 향후 개선 계획
+### 3. 현재 한계 및 향후 개선 계획
 
 **대화 히스토리**
 - 현재: 메모리(`defaultdict`) 기반 → 서버 재시작 시 히스토리 소멸
@@ -132,7 +142,52 @@ TTS
 
 ---
 
-## DB 구조
+## 전체 파이프라인 테스트
+
+프론트엔드 없이 서버의 파이프라인(STT → LLM 정제 → 에이전트)이 정상 동작하는지 로컬에서 확인하는 테스트 스크립트입니다. **실제 키오스크에서는 브라우저/앱이 이 역할을 대신합니다.**
+
+서버를 먼저 실행한 뒤, 별도 터미널에서 실행합니다.
+
+```bash
+# 서버 실행
+uvicorn api.main:app --reload
+
+# 파이프라인 테스트 (별도 터미널)
+python test_pipeline.py
+```
+
+말하면 아래와 같이 출력됩니다.
+
+```
+마이크 대기 중... (Ctrl+C로 종료)
+
+[STT]  불고기버그 하나 담아줘
+[정제] 불고기버거 하나 담아줘
+[응답] 불고기버거를 장바구니에 담았습니다. 다른 메뉴도 추가하시겠어요?
+```
+
+`Ctrl+C`로 종료합니다.
+
+---
+
+## 1. AI 에이전트 Tool 함수 목록
+
+LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
+
+| 함수 | 파일 | 기능 |
+|------|------|------|
+| `search_menu` | menu_tools.py | RAG 기반 메뉴 검색 |
+| `get_menu_by_price` | menu_tools.py | 가격 기준 메뉴 조회 (최저/최고/예산 범위) |
+| `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
+| `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |
+| `remove_from_cart` | cart_tools.py | 장바구니에서 특정 메뉴 제거 |
+| `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
+| `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
+| `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
+
+---
+
+## 2. DB 구조
 
 ### SQLite 테이블 (ria_menu.db)
 
@@ -149,6 +204,8 @@ TTS
 > 초기 설계에서는 세트별로 선택 가능한 옵션을 미리 연결하는 set_options 테이블을 두었으나,
 > 롯데리아의 모든 세트는 동일한 음료/사이드 옵션을 제공하므로 불필요한 중복 데이터가 발생했습니다.
 > 대신 세트 주문 시 cart 테이블의 drink_option, side_option 컬럼에 선택값을 저장하는 방식으로 단순화했습니다.
+
+<br>
 
 ### 테이블 상세 구조
 
@@ -269,7 +326,7 @@ TTS
 
 ---
 
-## API 명세
+## 3. API 명세
 
 서버 실행:
 ```bash
@@ -315,6 +372,12 @@ Swagger UI: http://127.0.0.1:8000/docs
 |--------|-----|------|
 | POST | /search | 자연어 메뉴 검색 |
 
+### 음성
+| Method | 경로 | 설명 |
+|--------|------|------|
+| POST | /stt/transcribe | 오디오 파일 업로드 → 텍스트 변환 (로컬 테스트용) |
+| WS | /stt/ws | 실시간 오디오 스트리밍 → 텍스트 반환 |
+
 #### POST /search 요청 예시
 ```json
 {
@@ -324,88 +387,35 @@ Swagger UI: http://127.0.0.1:8000/docs
 }
 ```
 
----
+#### POST /stt/transcribe (로컬 테스트용)
 
-## 환경 세팅
+Swagger UI(`/docs`)에서 오디오 파일을 직접 업로드해 테스트할 수 있습니다.
 
-### 1. Python 버전
 ```
-Python 3.10.11 권장
-```
-
-### 2. 가상환경 생성 및 활성화
-```bash
-py -3.10 -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# Mac/Linux
-source venv/bin/activate
+POST /stt/transcribe
+지원 형식: wav, mp3, m4a, ogg, flac
+반환: {"text": "인식된 텍스트", "language": "ko"}
 ```
 
-### 3. 패키지 설치
-```bash
-pip install -r requirements.txt
-```
+#### WS /stt/ws (키오스크 브라우저 연동용)
 
-### 4. 환경변수 설정
-`.env` 파일 생성 후 OpenAI API 키 입력:
+브라우저에서 마이크 오디오를 float32 PCM 청크(50ms 단위)로 전송하면, 발화가 끝날 때마다 전체 파이프라인(STT → LLM 정제 → 에이전트)을 처리하고 최종 응답을 반환합니다.
+
+파이프라인은 `asyncio.create_task`로 백그라운드에서 실행되므로, 처리 중에도 VAD가 계속 동작해 다음 발화를 즉시 감지할 수 있습니다.
+
 ```
-OPENAI_API_KEY=sk-...
+WS /stt/ws?session_id={session_id}
+송신: float32 PCM 바이트 (16kHz, mono, 50ms 청크)
+수신: {
+  "stt_text": "Whisper 인식 원문",
+  "refined_text": "LLM 정제 결과",
+  "response": "에이전트 최종 응답"
+}
 ```
 
 ---
 
-## DB 초기화 (최초 1회)
-
-```bash
-# 1. 테이블 생성
-python db_setup.py
-
-# 2. img_url 매칭
-python add_imgurl.py
-
-# 3. JSON 데이터 → DB 삽입
-python insert_data.py
-```
-
-### 세트 메뉴 크롤링 (최초 1회)
-
-세트 메뉴 데이터가 없거나 업데이트가 필요할 때 실행합니다.
-
-```bash
-# 세트 정보 크롤링 (알레르기, 열량, 원산지)
-python crawling/crawling_set.py
-
-# 세트 이미지 크롤링 (셀레니움 필요)
-python crawling/crawling_setimage.py
-
-# 크롤링 후 DB 재삽입
-python insert_data.py
-
-# 일부 데이터는 직접 입력함
-```
-
-
-
----
-
-## RAG 메뉴 검색 (ChromaDB 초기화)
-
-FastAPI 서버 실행 전 최초 1회 실행해서 ChromaDB를 생성해야 합니다.
-```bash
-python test.py
-```
-
-처음 실행 시 ChromaDB가 생성됩니다. 이후 실행부터는 기존 DB에 upsert됩니다.
-
-> ⚠️ 현재 test.py는 매번 실행 시 모델을 새로 로드하므로 속도가 느립니다.
-> FastAPI 서버에 붙이면 모델이 메모리에 유지되어 속도가 개선됩니다.
-
----
-
-## STT (음성 인식)
+## 4. STT 테스트 결과 (음성 인식)
 
 허깅페이스 허브에서 Whisper 모델을 로컬로 다운로드해 추론합니다. OpenAI API를 사용하지 않습니다.
 
@@ -473,66 +483,62 @@ python voice/stt_realtime.py --threshold 0.03
 
 ---
 
-## AI 에이전트 Tool 함수 목록
-
-LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
-
-| 함수 | 파일 | 기능 |
-|------|------|------|
-| `search_menu` | menu_tools.py | RAG 기반 메뉴 검색 |
-| `get_menu_by_price` | menu_tools.py | 가격 기준 메뉴 조회 (최저/최고/예산 범위) |
-| `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
-| `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |
-| `remove_from_cart` | cart_tools.py | 장바구니에서 특정 메뉴 제거 |
-| `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
-| `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
-| `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
-
----
-
-## FastAPI 서버
-
-### 서버 실행
-
-```bash
-uvicorn api.main:app --reload
-```
-
-실행 후 `http://localhost:8000/docs` 에서 Swagger UI로 전체 API를 확인하고 테스트할 수 있습니다.
-
-### API 엔드포인트
-
-| 메서드 | 경로 | 설명 |
-|--------|------|------|
-| GET | `/menu` | 메뉴 목록 조회 (`?q=검색어` 로 키워드 검색) |
-| GET | `/menu/{id}` | 메뉴 상세 조회 |
-| POST | `/stt/transcribe` | 오디오 파일 업로드 → 텍스트 변환 (로컬 테스트용) |
-| WS | `/stt/ws` | 실시간 오디오 스트리밍 → 텍스트 반환 |
-
-### STT API
-
-**REST — 파일 업로드 (로컬 테스트용)**
-
-Swagger UI(`/docs`)에서 오디오 파일을 직접 업로드해 테스트할 수 있습니다.
+## 프로젝트 구조
 
 ```
-POST /stt/transcribe
-지원 형식: wav, mp3, m4a, ogg, flac
-반환: {"text": "인식된 텍스트", "language": "ko"}
+sadollar-ai/
+│
+├── api/
+│   ├── main.py                    # FastAPI 서버 진입점
+│   └── routes/
+│       ├── menu.py                # 메뉴 API
+│       ├── cart.py                # 장바구니 API
+│       ├── order.py               # 주문/결제 API
+│       ├── session.py             # 세션 API
+│       ├── search.py              # RAG 검색 API
+│       └── stt.py                 # POST /stt/transcribe, WS /stt/ws
+│
+├── app/
+│   ├── agent.py                   # LangChain ReAct 에이전트 (GPT-4o + 툴 8개)
+│   ├── refine.py                  # STT 오인식 교정 (GPT-4o-mini)
+│   ├── session_context.py         # ContextVar 기반 세션 ID 관리
+│   ├── rag/
+│   │   ├── loader.py              # ria_menu.json → Document 변환
+│   │   ├── vector_store.py        # ChromaDB 임베딩 저장
+│   │   └── chroma.py              # ChromaDB 연결 및 검색
+│   │
+│   └── tools/
+│       ├── menu_tools.py          # 메뉴 검색 도구 (RAG + SQLite)
+│       └── cart_tools.py          # 장바구니/주문 도구
+│
+├── crawling/
+│   ├── crawling.py                # 단품 메뉴 크롤링 → ria_menu.json
+│   ├── crawling_set.py            # 세트 메뉴 크롤링 (이미지 제외) → ria_sets.json
+│   └── crawling_setimage.py       # 세트 이미지 크롤링 → ria_sets.json 업데이트
+│
+├── data/                          # 데이터 파일 모음
+│   ├── ria_menu.json              # 단품 메뉴 데이터 (82개, 카테고리별 100번대 id)
+│   ├── ria_options.json           # 세트 구성 옵션 (드링크/사이드/토핑 43개)
+│   ├── ria_sets_raw.json          # 세트 메뉴 데이터 (23개)
+│   └── ria_menu.db                # SQLite DB 파일 (gitignore 제외)
+│
+├── db/
+│   └── sqlite.py                  # DB 연결 및 쿼리 함수
+│
+├── voice/
+│   ├── stt.py                     # Whisper STT (파일 인식)
+│   └── stt_realtime.py            # Whisper STT (실시간 마이크 인식, listen_once 포함)
+│
+├── tests/
+│   ├── 뉴스녹음.m4a
+│   └── results/                   # STT 결과 저장 디렉토리
+│
+├── db_setup.py                    # DB 테이블 생성 스크립트 (최초 1회)
+├── insert_data.py                 # JSON → DB 데이터 삽입 스크립트 (최초 1회)
+├── test.py                        # ChromaDB 초기화 (최초 1회)
+├── test_pipeline.py               # 전체 파이프라인 테스트 (마이크 → 에이전트 응답)
+├── requirements.txt
+└── .env                           # OpenAI API 키 설정 (gitignore 제외)
 ```
-
-**WebSocket — 실시간 스트리밍 (키오스크 브라우저 연동용)**
-
-브라우저에서 마이크 오디오를 float32 PCM 청크(50ms 단위)로 전송하면,
-발화가 끝날 때마다 인식 결과를 JSON으로 반환합니다.
-
-```
-WS /stt/ws
-송신: float32 PCM 바이트 (16kHz, mono, 50ms 청크)
-수신: {"text": "인식된 텍스트"}
-```
-
-> ⚠️ `/stt/ws` 로 받은 `text` 를 AI 에이전트의 입력으로 사용합니다.
-> 에이전트는 이 텍스트를 기반으로 메뉴 검색, 장바구니 추가 등 주문 흐름을 처리합니다.
 
 ---
