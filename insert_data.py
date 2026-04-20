@@ -117,7 +117,7 @@ for s in sets:
         """, (
             s["burger_menu_id"],
             s["name"],
-            s.get("set_price", ""),
+            s.get("set_price", 0),
             s.get("description", ""),
             s.get("img_url", ""),
             s.get("allergy", ""),
