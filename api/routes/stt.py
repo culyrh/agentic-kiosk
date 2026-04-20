@@ -96,21 +96,28 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
     silence_count = 0
     in_speech = False
 
+    # 동일 세션에서 파이프라인이 동시에 실행되면 conversation_history에 race condition 발생
+    # (ToolMessage가 preceding tool_calls 없이 삽입됨 → OpenAI 400 에러)
+    # Lock으로 직렬화해 한 번에 하나의 파이프라인만 실행되도록 보장
+    pipeline_lock = asyncio.Lock()
+
     async def process_and_send(audio: np.ndarray):
         # STT → 정제 → 에이전트를 순차 실행하되, asyncio.to_thread로 동기 함수를 별도
         # 스레드에서 실행해 이벤트 루프를 블로킹하지 않음
-        stt_text = await asyncio.to_thread(transcribe_array, model, audio)
-        if not stt_text.strip():
-            return
-        refined_text = await asyncio.to_thread(refine_stt, stt_text.strip())
-        response = await asyncio.to_thread(chat, refined_text, session_id)
-        await websocket.send_text(
-            json.dumps({
-                "stt_text": stt_text.strip(),
-                "refined_text": refined_text,
-                "response": response,
-            }, ensure_ascii=False)
-        )
+        # pipeline_lock으로 감싸 동시 실행을 막고 히스토리 race condition 방지
+        async with pipeline_lock:
+            stt_text = await asyncio.to_thread(transcribe_array, model, audio)
+            if not stt_text.strip():
+                return
+            refined_text = await asyncio.to_thread(refine_stt, stt_text.strip())
+            response = await asyncio.to_thread(chat, refined_text, session_id)
+            await websocket.send_text(
+                json.dumps({
+                    "stt_text": stt_text.strip(),
+                    "refined_text": refined_text,
+                    "response": response,
+                }, ensure_ascii=False)
+            )
 
     try:
         while True:
