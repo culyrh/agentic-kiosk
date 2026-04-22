@@ -196,7 +196,8 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
 | `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
 | `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
-
+| `get_set_info` | menu_tools.py | 세트 메뉴 정보 + 옵션 목록 |
+| `upgrade_to_set` | cart_tools.py | 단품 → 세트 업그레이드 (추가금액 반영) |
 ---
 
 ## 2. DB 구조
