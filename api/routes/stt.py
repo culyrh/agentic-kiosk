@@ -7,6 +7,7 @@ WS    WS   /stt/ws          - 오디오 청크 스트리밍 → 실시간 텍스
 
 import asyncio
 import json
+import re
 import tempfile
 from collections import deque
 from pathlib import Path
@@ -30,6 +31,14 @@ SILENCE_CHUNKS = 16
 MIN_SPEECH_CHUNKS = 6
 
 _model = None
+
+
+def split_response(text: str) -> tuple[str, str]:
+    """에이전트 응답에서 [SCREEN]...[/SCREEN] 태그를 파싱해 음성/화면 내용을 분리"""
+    screen_matches = re.findall(r'\[SCREEN\](.*?)\[/SCREEN\]', text, re.DOTALL)
+    voice = re.sub(r'\[SCREEN\].*?\[/SCREEN\]', '', text, flags=re.DOTALL).strip()
+    screen = screen_matches[0].strip() if screen_matches else ""
+    return voice, screen
 
 
 def get_model():
@@ -111,11 +120,13 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                 return
             refined_text = await asyncio.to_thread(refine_stt, stt_text.strip())
             response = await asyncio.to_thread(chat, refined_text, session_id)
+            voice, screen = split_response(response)
             await websocket.send_text(
                 json.dumps({
                     "stt_text": stt_text.strip(),
                     "refined_text": refined_text,
-                    "response": response,
+                    "voice": voice,
+                    "screen": screen,
                 }, ensure_ascii=False)
             )
 

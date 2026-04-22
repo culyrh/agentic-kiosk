@@ -72,12 +72,16 @@ async def main(session_id: str = "test"):
             # 서버가 발화 종료를 감지하고 파이프라인 처리를 완료하면 JSON 응답을 보냄
             # stt_text: Whisper 인식 원문
             # refined_text: LLM 정제 결과
-            # response: 에이전트 최종 응답
+            # voice: 에이전트 응답 중 음성으로 읽을 내용
+            # screen: 에이전트 응답 중 화면에만 표시할 내용 ([SCREEN] 태그 파싱 결과)
             async for msg in ws:
                 data = json.loads(msg)
                 print(f"[STT]  {data['stt_text']}")
                 print(f"[정제] {data['refined_text']}")
-                print(f"[응답] {data['response']}\n")
+                print(f"[음성] {data['voice']}")
+                if data['screen']:
+                    print(f"[화면] {data['screen']}")
+                print()
 
         send_task = asyncio.create_task(send_audio())
         recv_task = asyncio.create_task(receive())
