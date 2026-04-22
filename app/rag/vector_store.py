@@ -3,7 +3,7 @@ from langchain_chroma import Chroma
 from app.rag.chroma import get_embedding
 
 
-def create_vector_db_1(documents): # 1회용 벡터 생성
+def create_vector_db(documents): # 1회용 벡터 생성
     # ID 기반 add (collision 시 overwrite)
 
     embedding = get_embedding()
@@ -16,6 +16,7 @@ def create_vector_db_1(documents): # 1회용 벡터 생성
         collection_metadata={"hnsw:space": "cosine"},
     )
     
+    db.reset_collection()
     db.add_documents(documents=documents, ids=ids)
     
     

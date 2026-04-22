@@ -71,7 +71,7 @@ cursor.execute("""
         set_id         INTEGER PRIMARY KEY AUTOINCREMENT,
         burger_menu_id INTEGER,
         name           TEXT,
-        set_price      TEXT,
+        set_price      INTEGER,
         description    TEXT DEFAULT '',
         img_url        TEXT DEFAULT '',
         allergy        TEXT DEFAULT '',
