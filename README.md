@@ -212,6 +212,7 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | set_menus | 버거별 세트 구성 및 가격 | 23개 |
 | cart | 주문 중인 장바구니 | - |
 | orders | 결제 완료된 주문 내역 | - |
+| order_items | 주문별 메뉴 상세 내역 | - |
 | sessions | 현재 대화 상태 저장 | - |
 
 > **set_options 테이블을 제거한 이유**
@@ -277,6 +278,17 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | payment_method | TEXT | 결제 수단 |
 | status | TEXT | pending → paid |
 | created_at | TEXT | 주문 시각 |
+
+**order_items 테이블**
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| item_id | INTEGER | 항목 ID (자동 증가) |
+| order_id | INTEGER | 주문 ID (orders 테이블 참조) |
+| menu_id	| INTEGER |	메뉴 ID (menu 테이블 참조) |
+|quantity |	INTEGER |	수량 |
+| unit_price | INTEGER | 단품/세트 단가 |
+|drink_option	| TEXT | 선택한 음료 (세트인 경우) |
+| side_option | TEXT | 선택한 사이드 (세트인 경우) |
 
 **sessions 테이블**
 | 컬럼 | 타입 | 설명 |
