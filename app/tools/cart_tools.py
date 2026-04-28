@@ -34,7 +34,9 @@ def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list = []
 
     item_name: 손님이 말한 메뉴명. 정확하지 않아도 자동으로 유사 메뉴를 찾아준다.
     customer_allergies: 손님이 대화 중 언급한 알레르기 성분 목록. 언급이 없으면 빈 리스트로 두어라.
-                        예) 손님이 "새우 알레르기 있어요" → ["새우"]
+                        예) "새우 알레르기 있어요" → ["새우"]
+    알레르기 포함으로 추가 불가 메시지가 반환되면 손님에게 안내하고 다른 메뉴를 권유하라.
+    여러 메뉴 선택지가 반환되면 그대로 보여주고 손님이 메뉴 이름으로 답하면 다시 호출하라.
     """
     conn = sqlite3.connect(DB_PATH)
     conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
@@ -178,7 +180,11 @@ def view_cart() -> str:
 
 @tool
 def remove_from_cart(item_name: str) -> str:
-    """장바구니에서 메뉴를 제거한다"""
+    """장바구니에서 메뉴를 제거한다.
+
+    메뉴명이 명확히 여러 개일 때만 여러 번 호출하라. 1개만 언급했을 때는 1번만 호출하라.
+    여러 메뉴 선택지가 반환되면 손님에게 어떤 메뉴를 취소할지 물어봐라.
+    """
 
     session_id = current_session_id.get()
 
