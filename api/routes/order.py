@@ -1,13 +1,16 @@
 # api/routes/order.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from db.sqlite import create_order, complete_payment, get_orders, get_cart, clear_cart
+from db.sqlite import create_order, complete_payment, get_orders, get_cart, clear_cart, get_order_by_id
 
 router = APIRouter(prefix="/order", tags=["order"])
 
 class OrderRequest(BaseModel):
     session_id: str
     payment_method: str = "card"
+
+class PaymentRequest(BaseModel):
+    session_id: str
 
 # 주문 생성
 @router.post("")
@@ -21,7 +24,12 @@ def create_new_order(req: OrderRequest):
 
 # 결제 완료
 @router.post("/{order_id}/payment")
-def payment(order_id: int, req: OrderRequest):
+def payment(order_id: int, req: PaymentRequest):
+    order = get_order_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="주문을 찾을 수 없습니다.")
+    if order["status"] == "paid":
+        raise HTTPException(status_code=400, detail="이미 결제된 주문입니다.")
     complete_payment(order_id)
     clear_cart(req.session_id)
     return {"message": "결제가 완료됐습니다.", "order_id": order_id}

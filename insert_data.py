@@ -14,8 +14,6 @@
 # 4. ria_sets.json → set_menus 삽입
 #    - burger_menu_id: menu 테이블과 연결
 #    - set_price: 단품가격 + 2,000원
-#    - 토핑 옵션은 set_options에서 제외
-# 5. set_options 연결 (드링크/사이드만)
 #
 # ※ 실행 전 크롤링이 완료되어 있어야 합니다:
 #    python crawling/crawling_set.py     (세트 정보)
@@ -102,8 +100,6 @@ print("\n4. set_menus 테이블 데이터 삽입 중...")
 with open("data/ria_sets.json", encoding="utf-8") as f:
     sets = json.load(f)
 
-# 토핑 제외한 옵션만 세트에 연결
-all_option_ids = [o["option_id"] for o in options if o["option_type"] != "토핑"]
 inserted_sets = []
 
 for s in sets:

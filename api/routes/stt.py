@@ -1,3 +1,5 @@
+#/api/routes/stt.py
+
 """
 STT API
 
@@ -120,6 +122,20 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
             if not stt_text.strip():
                 return
             refined_text = await asyncio.to_thread(refine_stt, stt_text.strip())
+
+            # 욕설 필터링 (1차 필터링과 동일한 함수 재사용)
+            from api.main import contains_blocked_keyword
+            if contains_blocked_keyword(refined_text):
+                await websocket.send_text(
+                    json.dumps({
+                        "stt_text": stt_text.strip(),
+                        "refined_text": refined_text,
+                        "voice": "부적절한 표현이 포함되어 있습니다.",
+                        "screen": "",
+                    }, ensure_ascii=False)
+                )
+                return   
+        
             response = await asyncio.to_thread(chat, refined_text, session_id)
             voice, screen = split_response(response)
             await websocket.send_text(

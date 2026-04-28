@@ -10,7 +10,6 @@ from api.routes.stt import get_model, router as stt_router
 from app.rag.chroma import get_chroma_db
 from api.routes.cart import router as cart_router
 from api.routes.order import router as order_router
-from api.routes.session import router as session_router
 from api.routes.search import router as search_router
 from api.routes.options import router as options_router
 from api.routes.sets import router as sets_router
@@ -18,10 +17,14 @@ from api.routes.sets import router as sets_router
 
 # 욕설/비속어 키워드 목록
 BLOCKED_KEYWORDS = [
-    "씨발", "시발", "ㅅㅂ", "개새끼", "병신", "ㅂㅅ",
+    "씨발", "시발", "ㅅㅂ", "개새끼", "병신", "ㅂㅅ", "바보",
     "지랄", "ㅈㄹ", "미친", "ㅁㅊ", "새끼", "ㅅㄲ",
-    "꺼져", "닥쳐", "죽어", "fuck", "shit", "bitch",
-    "asshole", "bastard"
+    "꺼져", "닥쳐", "죽어", "년", "놈", "빌어먹", "거지같", "존나", "ㅈㄴ",
+    "좆", "보지", "니애미", "니엄마", "느금마",
+    "찐따", "멍청", "바보", "돌아이",
+    "꺼지", "죽을", "때려", "죽여",
+    "fuck", "shit", "bitch","damn", "crap", "idiot", "stupid", "dumb",
+    "wtf", "stfu", "asshole", "bastard"
 ]
 
 def contains_blocked_keyword(text: str) -> bool:
@@ -63,7 +66,6 @@ def health_check():
 app.include_router(menu_router)
 app.include_router(cart_router)
 app.include_router(order_router)
-app.include_router(session_router)
 app.include_router(search_router)
 app.include_router(stt_router)
 app.include_router(options_router)
