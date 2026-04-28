@@ -76,22 +76,30 @@ AI 에이전트 (LangChain + GPT-4o)
 ↓
 도구 선택
 ↓
-┌────────────────────────────────────────────────────────────────┐
-│                                                                │
-│  [메뉴 검색]              [메뉴 조회]         [장바구니/주문]     │
-│  search_menu              get_menu_info      add_to_cart       │
-│                           get_menu_by_price  remove_from_cart  │
-│       ↓                        ↓             view_cart         │
-│  query(의미) 있음?              ↓             confirm_order     │
-│  ┌──YES──┐               SQLite              clear_cart        │
-│  ↓       ↓               (이름 LIKE 검색)          ↓            │
-│ ChromaDB  SQLite               ↓             SQLite            │
-│ (벡터검색) (카테고리           메뉴 정보      (이름 기반 매칭      │ 
-│  의미기반)  전체조회,           반환          → cart/orders      │ 
-│     ↓      LIMIT+OFFSET)                     테이블 처리)       │ 
-│  텍스트     ↓                                      ↓           │
-│  반환      텍스트 반환                          결과 반환        │
-└────────────────────────────────────────────────────────────────┘
+─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│  [메뉴 검색]                    [메뉴 조회]          [장바구니/주문]           │
+│  search_menu                   get_menu_info        add_to_cart             │
+│       ↓                        get_menu_by_price    update_cart_quantity    │
+│  어떤 경로?                     get_set_info         remove_from_cart        │
+│                                      ↓              upgrade_to_set          │
+│  ① exclude만 있음                  SQLite            view_cart               │
+│     → SQL 전체조회                (이름/가격          confirm_order           │
+│       알레르기 필터                  LIKE 검색)       clear_cart              │
+│                                      ↓                    ↓                 │
+│  ② badge만 있음                  정보 반환          SQLite 3단계 이름 매칭     │
+│     → SQL badge LIKE 검색                          1차: 완전일치              │
+│                                                    2차: AND검색              │
+│  ③ category만 있음                                     + 가장 긴 토큰 병합    │
+│     → SQL 카테고리 조회                             3차: 접두어 수집           │
+│       (LIMIT 3, OFFSET)                                 ↓                   │
+│                                                    cart/orders/order_items  │
+│  ④ 그 외 (query 있음 등)                            테이블 처리               │
+│     → ChromaDB 벡터 검색                                ↓                    │
+│       (유사도 0.7 임계값)                           결과 반환                 │
+│          ↓                                                                  │
+│      텍스트 반환                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
 ↓
 LLM 응답 생성
 ↓
@@ -102,7 +110,8 @@ TTS
 
 ### 1. 설계 원칙
 
-- **ChromaDB**: `search_menu`에서 의미 기반 쿼리(query 파라미터)가 있을 때만 사용
+- **ChromaDB**: `search_menu`에서 query 파라미터가 있을 때만 사용
+  (exclude만/카테고리만/badge만 있는 경우는 모두 SQLite로 처리)
 - **카테고리 전체 조회**: SQLite LIMIT/OFFSET 페이지네이션으로 처리 (ChromaDB k 제한 우회)
 - **장바구니 추가/제거**: ChromaDB를 거치지 않고 SQLite 이름 매칭으로 직접 처리
 - **장바구니/주문**: SQLite `cart`, `orders` 테이블에서 전담 처리
@@ -126,18 +135,9 @@ TTS
 
 ### 3. 현재 한계 및 향후 개선 계획
 
-**대화 히스토리**
-- 현재: 메모리(`defaultdict`) 기반 → 서버 재시작 시 히스토리 소멸
-- 현재: 대화가 길어질수록 히스토리가 무한정 쌓여 토큰 비용 증가
-- 향후: Redis/DB 영속화, 슬라이딩 윈도우(최근 N턴만 유지) 도입 예정
-
 **remove_from_cart 중복 호출**
 - 현재: SYSTEM_PROMPT 지시 + 턴당 1회 플래그(`_remove_called`)로 방지
 - 한계: LLM이 히스토리에서 정확한 메뉴명을 알고 있을 때 엣지케이스 발생 가능
-
-**주문 외 발화 처리**
-- 현재: 별도 필터 없음 → LLM이 주문 외 질문도 응답해 비용 낭비
-- 향후: 백엔드 미들웨어(1차) + SYSTEM_PROMPT(2차) 2단계 필터링 예정 (Issue 참고)
 
 ---
 
@@ -190,14 +190,16 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | `search_menu` | menu_tools.py | RAG 기반 메뉴 검색 |
 | `get_menu_by_price` | menu_tools.py | 가격 기준 메뉴 조회 (최저/최고/예산 범위) |
 | `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
+| `get_set_info` | menu_tools.py | 세트 메뉴 정보 + 옵션 목록 |
 | `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |
+| `update_cart_quantity` | cart_tools.py | 장바구니 수량 변경 (0 이하면 자동 제거) |
 | `remove_from_cart` | cart_tools.py | 장바구니에서 특정 메뉴 제거 |
+| `upgrade_to_set` | cart_tools.py | 단품 버거 → 세트 전환 (음료/사이드 지정, 추가금액 반영) |
 | `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
 | `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
 | `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
-| `get_set_info` | menu_tools.py | 세트 메뉴 정보 + 옵션 목록 |
-| `upgrade_to_set` | cart_tools.py | 단품 → 세트 업그레이드 (추가금액 반영) |
 ---
+
 
 ## 2. DB 구조
 
