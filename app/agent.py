@@ -80,7 +80,17 @@ def chat(user_input: str, session_id: str = "default") -> str:
     new_messages = result["messages"][len(history):]
     history.extend(new_messages)
     _trim_history(history)
-    return result["messages"][-1].content
+
+    final_response = result["messages"][-1].content
+
+    # confirm_order 툴이 주문 완료를 반환하면 히스토리 초기화.
+    if any(
+        "주문이 완료되었습니다" in (getattr(m, "content", "") or "")
+        for m in new_messages
+    ):
+        conversation_history[session_id].clear()
+
+    return final_response
 
 
 if __name__ == "__main__":
