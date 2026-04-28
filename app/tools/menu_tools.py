@@ -6,6 +6,125 @@ from app.rag.chroma import get_chroma_db
 DB_PATH = "data/ria_menu.db"
 
 
+def _build_search_terms(normalized: str, clean_name: str) -> list[str]:
+    tokens = [t for t in clean_name.split() if t] or [normalized]
+    terms = []
+    for tok in tokens:
+        terms.append(tok)
+        for trim in range(1, len(tok)):
+            prefix = tok[:-trim]
+            if len(prefix) >= 2:
+                terms.append(prefix)
+    seen = set()
+    return [t for t in terms if not (t in seen or seen.add(t))]
+
+
+@tool
+def get_set_info(burger_name: str) -> str:
+    """버거의 세트 메뉴 정보와 선택 가능한 음료/사이드 옵션을 반환한다.
+    버거를 장바구니에 담은 직후 세트 여부를 확인할 때 사용하라.
+    예) add_to_cart로 버거를 담은 후 → get_set_info 호출 → 세트 안내
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
+    cur = conn.cursor()
+
+    clean_name = burger_name.strip()
+    normalized = clean_name.replace(" ", "")
+    tokens = [t for t in clean_name.split() if t] or [normalized]
+
+    # 1차: 완전 일치
+    cur.execute(
+        "SELECT id, name, price FROM menu WHERE REPLACE_SPACE(name) = ?",
+        (normalized,)
+    )
+    burger = cur.fetchone()
+
+    if not burger:
+        rows = []
+
+        # 2차: AND 검색 + 가장 긴 토큰 병합
+        if len(tokens) > 1:
+            and_conditions = " AND ".join(["REPLACE_SPACE(name) LIKE ?" for _ in tokens])
+            cur.execute(
+                f"SELECT id, name, price FROM menu WHERE {and_conditions}",
+                [f"%{t}%" for t in tokens]
+            )
+            rows = cur.fetchall()
+
+            # AND 결과가 있을 때만 가장 긴 토큰으로 추가 검색해서 병합
+            if rows:
+                longest_token = max(tokens, key=len)
+                cur.execute(
+                    "SELECT id, name, price FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
+                    (f"%{longest_token}%",)
+                )
+                existing_ids = {r[0] for r in rows}
+                for row in cur.fetchall():
+                    if row[0] not in existing_ids:
+                        rows.append(row)
+                        existing_ids.add(row[0])
+
+        # 3차: 접두어 단계별 수집
+        if not rows:
+            terms = _build_search_terms(normalized, clean_name)
+            collected = {}
+            half = max(2, len(normalized) // 2)
+            for term in terms:
+                cur.execute(
+                    "SELECT id, name, price FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
+                    (f"%{term}%",)
+                )
+                for row in cur.fetchall():
+                    if row[0] not in collected:
+                        collected[row[0]] = row
+                if collected and len(term) <= half:
+                    break
+            rows = list(collected.values())
+
+        burger = rows[0] if rows else None
+
+    if not burger:
+        conn.close()
+        return "세트 메뉴 정보를 찾을 수 없습니다."
+
+    burger_id, burger_name_actual, burger_price = burger
+
+    cur.execute(
+        "SELECT set_id, set_price FROM set_menus WHERE burger_menu_id = ?",
+        (burger_id,)
+    )
+    set_menu = cur.fetchone()
+
+    if not set_menu:
+        conn.close()
+        return f"{burger_name_actual}은(는) 세트 메뉴가 없습니다."
+
+    _, set_price = set_menu
+
+    cur.execute("""
+        SELECT m.name, o.extra_price FROM options o
+        JOIN menu m ON o.menu_id = m.id
+        WHERE o.option_type = '드링크'
+    """)
+    drinks = [f"{name}({'+' + str(ep) + '원' if ep else '기본'})" for name, ep in cur.fetchall()]
+
+    cur.execute("""
+        SELECT m.name, o.extra_price FROM options o
+        JOIN menu m ON o.menu_id = m.id
+        WHERE o.option_type = '사이드'
+    """)
+    sides = [f"{name}({'+' + str(ep) + '원' if ep else '기본'})" for name, ep in cur.fetchall()]
+
+    conn.close()
+
+    return (
+        f"{burger_name_actual} 세트: {set_price:,}원 (단품 {burger_price:,}원, +{set_price - burger_price:,}원)\n"
+        f"음료 선택: {', '.join(drinks)}\n"
+        f"사이드 선택: {', '.join(sides)}"
+    )
+
+
 @tool
 def get_menu_by_price(category: str = None, order: str = "asc", limit: int = 5, max_price: int = None, min_price: int = None) -> str:
     """가격 기준으로 메뉴를 조회한다. 가장 비싸거나 저렴한 메뉴, 또는 예산 내 메뉴를 찾을 때 사용하라.
@@ -26,7 +145,7 @@ def get_menu_by_price(category: str = None, order: str = "asc", limit: int = 5, 
     price_expr = "CAST(REPLACE(price, ',', '') AS INTEGER)"
     order_sql = "DESC" if order == "desc" else "ASC"
 
-    conditions = ["category != '토핑'"]
+    conditions = []
     params = []
 
     if category:
@@ -67,12 +186,57 @@ def get_menu_info(name: str) -> str:
     conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
     cur = conn.cursor()
 
-    normalized = name.replace(" ", "")
+    clean_name = name.strip()
+    normalized = clean_name.replace(" ", "")
+    tokens = [t for t in clean_name.split() if t] or [normalized]
+
+    # 1차: 완전 일치
     cur.execute(
-        "SELECT name, price, description, allergy FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
-        (f"%{normalized}%",)
+        "SELECT name, price, description, allergy FROM menu WHERE REPLACE_SPACE(name) = ?",
+        (normalized,)
     )
     rows = cur.fetchall()
+
+    if not rows:
+        # 2차: AND 검색 + 가장 긴 토큰 병합
+        if len(tokens) > 1:
+            and_conditions = " AND ".join(["REPLACE_SPACE(name) LIKE ?" for _ in tokens])
+            cur.execute(
+                f"SELECT name, price, description, allergy FROM menu WHERE {and_conditions}",
+                [f"%{t}%" for t in tokens]
+            )
+            rows = cur.fetchall()
+
+            # AND 결과가 있을 때만 가장 긴 토큰으로 추가 검색해서 병합
+            if rows:
+                longest_token = max(tokens, key=len)
+                cur.execute(
+                    "SELECT name, price, description, allergy FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
+                    (f"%{longest_token}%",)
+                )
+                existing_ids = {r[0] for r in rows}
+                for row in cur.fetchall():
+                    if row[0] not in existing_ids:
+                        rows.append(row)
+                        existing_ids.add(row[0])
+
+        # 3차: 접두어 단계별 수집
+        if not rows:
+            terms = _build_search_terms(normalized, clean_name)
+            collected = {}
+            half = max(2, len(normalized) // 2)
+            for term in terms:
+                cur.execute(
+                    "SELECT name, price, description, allergy FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
+                    (f"%{term}%",)
+                )
+                for row in cur.fetchall():
+                    if row[0] not in collected:
+                        collected[row[0]] = row
+                if collected and len(term) <= half:
+                    break
+            rows = list(collected.values())
+
     conn.close()
 
     if not rows:
@@ -85,6 +249,27 @@ def get_menu_info(name: str) -> str:
 
 
 def search_menu_logic(query: str="", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = []):
+
+    # 쿼리·카테고리·배지 없이 exclude만 있으면 SQL로 전체 메뉴 조회 후 알레르기 필터
+    if not query and not category and not badge and exclude:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT name, price, description, allergy FROM menu WHERE category != '토핑' LIMIT 20 OFFSET ?",
+            (offset,)
+        )
+        rows = cur.fetchall()
+        conn.close()
+
+        results = []
+        for name, price, description, allergy in rows:
+            if any(item in (allergy or "") for item in exclude):
+                continue
+            if exclude_names and any(en in name for en in exclude_names):
+                continue
+            content = f"메뉴명: {name}\n        가격: {price}원\n        설명: {description}\n        알레르기: {allergy}"
+            results.append((content, 0.0))
+        return results[:3]
 
     # 카테고리만 지정된 경우 SQL로 페이지네이션 조회
     if category and not query and not badge:
