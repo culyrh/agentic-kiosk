@@ -16,6 +16,16 @@ Base URL: `http://127.0.0.1:8000`
 
 ---
 
+## 옵션
+
+| 카테고리 | 메서드 | 엔드포인트 | 설명 | 입력 | 출력 | 예외처리 / 정책 |
+|----------|--------|-----------|------|------|------|----------------|
+| options | GET | /options | 전체 옵션 조회 | - | `{"items": [{option_id, option_type, extra_price, name, price, img_url}]}` | - |
+| options | GET | /options?type=드링크 | 드링크 목록 조회 | query: `type` | `{"items": [...]}` | 없는 타입이면 빈 배열 반환 |
+| options | GET | /options?type=사이드 | 사이드 목록 조회 | query: `type` | `{"items": [...]}` | 없는 타입이면 빈 배열 반환 |
+
+---
+
 ## 장바구니
 
 | 카테고리 | 메서드 | 엔드포인트 | 설명 | 입력 | 출력 | 예외처리 / 정책 |
@@ -33,7 +43,7 @@ Base URL: `http://127.0.0.1:8000`
 | 카테고리 | 메서드 | 엔드포인트 | 설명 | 입력 | 출력 | 예외처리 / 정책 |
 |----------|--------|-----------|------|------|------|----------------|
 | order | POST | /order | 주문 생성 | body: `{session_id, payment_method}` | `{"order_id": 1, "total_price": 15000, "message": "주문이 생성됐습니다."}` | 장바구니 비어있음 → 400 |
-| order | POST | /order/{order_id}/payment | 결제 완료 | path: `order_id`, body: `{session_id}` | `{"message": "결제가 완료됐습니다.", "order_id": 1}` | - 결제 완료 후 장바구니 자동 비워짐 |
+| order | POST | /order/{order_id}/payment | 결제 완료 | path: `order_id`, body: `{session_id}` | `{"message": "결제가 완료됐습니다.", "order_id": 1}` | 결제 완료 후 장바구니 자동 비워짐 |
 | order | GET | /order/{session_id} | 주문 내역 조회 | path: `session_id` | `{"orders": [{order_id, session_id, total_price, payment_method, status, created_at}]}` | 없으면 빈 배열 반환 |
 
 ---
@@ -56,11 +66,19 @@ Base URL: `http://127.0.0.1:8000`
 
 ---
 
+## 헬스체크
+
+| 카테고리 | 메서드 | 엔드포인트 | 설명 | 입력 | 출력 | 예외처리 / 정책 |
+|----------|--------|-----------|------|------|------|----------------|
+| health | GET | /health | 서버 상태 확인 | - | `{"status": "ok"}` | - |
+
+---
+
 ## 공통 정책
 
 | 항목 | 내용 |
 |------|------|
-| 욕설 필터링 | 모든 POST 요청의 text/query/message 필드에 욕설 감지 시 즉시 400 반환 |
+| 욕설 필터링 | 모든 POST 요청의 text/query/message 필드에 욕설 감지 시 즉시 400 반환 (LLM 호출 없음) |
 | 응답 형식 | 모든 응답은 JSON |
 | 서버 실행 | `python -m uvicorn api.main:app --reload` |
 | Swagger UI | http://127.0.0.1:8000/docs |

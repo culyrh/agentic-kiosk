@@ -11,7 +11,7 @@ from api.routes.cart import router as cart_router
 from api.routes.order import router as order_router
 from api.routes.session import router as session_router
 from api.routes.search import router as search_router
-
+from api.routes.options import router as options_router
 
 # 욕설/비속어 키워드 목록
 BLOCKED_KEYWORDS = [
@@ -51,6 +51,10 @@ async def filter_middleware(request: Request, call_next):
     response = await call_next(request)
     return response
 
+# 헬스체크
+@app.get("/health", tags=["health"])
+def health_check():
+    return {"status": "ok"}
 
 app.include_router(menu_router)
 app.include_router(cart_router)
@@ -58,3 +62,4 @@ app.include_router(order_router)
 app.include_router(session_router)
 app.include_router(search_router)
 app.include_router(stt_router)
+app.include_router(options_router)

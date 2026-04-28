@@ -96,6 +96,30 @@ def get_set_by_burger_id(burger_menu_id: int):
     conn.close()
     return dict(row) if row else None
 
+# =====================================================
+# 옵션
+# =====================================================
+
+def get_options(option_type: str = None):
+    conn = get_connection()
+    if option_type:
+        rows = conn.execute("""
+            SELECT o.option_id, o.option_type, o.extra_price, m.name, m.price, m.img_url
+            FROM options o
+            JOIN menu m ON o.menu_id = m.id
+            WHERE o.option_type = ?
+            ORDER BY o.option_id ASC
+        """, (option_type,)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT o.option_id, o.option_type, o.extra_price, m.name, m.price, m.img_url
+            FROM options o
+            JOIN menu m ON o.menu_id = m.id
+            ORDER BY o.option_type ASC, o.option_id ASC
+        """).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
 
 # =====================================================
 # 장바구니
@@ -178,7 +202,6 @@ def get_orders(session_id: str):
     """, (session_id,)).fetchall()
     conn.close()
     return [dict(row) for row in rows]
-
 
 # =====================================================
 # 세션
