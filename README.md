@@ -133,12 +133,6 @@ TTS
 - DB/ChromaDB 스키마 확정 이후
 - "세트 포함 + 8000원 이하 + 매운 버거" 같은 복합 필터 쿼리 실패 케이스가 쌓일 때
 
-### 3. 현재 한계 및 향후 개선 계획
-
-**remove_from_cart 중복 호출**
-- 현재: SYSTEM_PROMPT 지시 + 턴당 1회 플래그(`_remove_called`)로 방지
-- 한계: LLM이 히스토리에서 정확한 메뉴명을 알고 있을 때 엣지케이스 발생 가능
-
 ---
 
 ## 전체 파이프라인 테스트
@@ -213,11 +207,13 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | cart | 주문 중인 장바구니 | - |
 | orders | 결제 완료된 주문 내역 | - |
 | order_items | 주문별 메뉴 상세 내역 | - |
-| sessions | 현재 대화 상태 저장 | - |
 
 > **set_options 테이블을 제거한 이유**
 > 롯데리아의 모든 세트는 동일한 음료/사이드 옵션을 제공하므로 세트별 옵션 연결 테이블이 불필요했습니다.
 > 세트 주문 시 cart 테이블의 drink_option, side_option 컬럼에 선택값을 저장하는 방식으로 단순화했습니다.
+
+> **sessions 테이블을 제거한 이유**
+> 인메모리 대화 히스토리(`defaultdict`)가 current_state, last_recommended 역할을 대신하므로 불필요했습니다.
 
 ### 테이블 상세 구조
 
@@ -290,13 +286,6 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 |drink_option	| TEXT | 선택한 음료 (세트인 경우) |
 | side_option | TEXT | 선택한 사이드 (세트인 경우) |
 
-**sessions 테이블**
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| session_id | TEXT | 세션 ID |
-| current_state | TEXT | browsing → ordering → paying → done |
-| last_recommended | TEXT | 마지막 추천 메뉴명 |
-| updated_at | TEXT | 마지막 업데이트 시각 |
 
 ### 메뉴 ID 체계
 
@@ -364,14 +353,29 @@ Swagger UI: http://127.0.0.1:8000/docs
 | GET | /menu?category=버거 | 카테고리 필터 |
 | GET | /menu?q=불고기 | 키워드 검색 |
 | GET | /menu/{id} | 단건 조회 |
-| GET | /menu/{id}/set | 세트 조회 |
+| GET | /menu/{id}/set | 버거 ID로 세트 조회 |
+
+### 세트 메뉴
+| Method | URL | 설명 |
+|--------|-----|------|
+| GET | /sets | 전체 세트 목록 조회 |
+| GET | /sets/{set_id} | 세트 단건 조회 |
+
+### 옵션
+| Method | URL | 설명 |
+|--------|-----|------|
+| GET | /options | 전체 옵션 조회 |
+| GET | /options?type=드링크 | 드링크 목록 |
+| GET | /options?type=사이드 | 사이드 목록 |
 
 ### 장바구니
 | Method | URL | 설명 |
 |--------|-----|------|
 | GET | /cart/{session_id} | 장바구니 조회 |
 | POST | /cart | 장바구니 담기 |
-| PUT | /cart/{cart_id} | 수량 수정 |
+| PUT | /cart/{cart_id} | 수량 직접 수정 |
+| PATCH | /cart/{cart_id}/increase | 수량 +1 |
+| PATCH | /cart/{cart_id}/decrease | 수량 -1 (1이면 자동 삭제) |
 | DELETE | /cart/{cart_id} | 항목 삭제 |
 | DELETE | /cart/session/{session_id} | 전체 비우기 |
 
@@ -382,26 +386,15 @@ Swagger UI: http://127.0.0.1:8000/docs
 | POST | /order/{order_id}/payment | 결제 |
 | GET | /order/{session_id} | 주문 내역 조회 |
 
-### 세션
-| Method | URL | 설명 |
-|--------|-----|------|
-| POST | /session/{session_id} | 세션 생성 |
-| GET | /session/{session_id} | 세션 조회 |
-| PUT | /session/{session_id} | 세션 업데이트 |
-
 ### RAG 검색
 | Method | URL | 설명 |
 |--------|-----|------|
 | POST | /search | 자연어 메뉴 검색 |
 
-#### POST /search 요청 예시
-```json
-{
-  "query": "치즈 들어가는 햄버거 추천해줘",
-  "k": 5,
-  "score_threshold": 0.5
-}
-```
+### 헬스체크
+| Method | URL | 설명 |
+|--------|-----|------|
+| GET | /health | 서버 상태 확인 |
 
 ---
 
@@ -411,19 +404,16 @@ Swagger UI: http://127.0.0.1:8000/docs
 
 `api/main.py`에 미들웨어로 구현되어 있습니다.
 
-- 명백한 욕설/비속어 키워드 → 즉시 차단
-- LLM 호출 없음 → 비용 0
+- 모든 POST 요청의 text/query/message 필드 검사
+- 욕설 감지 시 LLM 호출 없이 즉시 400 반환
 
-```
-POST 요청
-↓
-미들웨어에서 body의 text/query/message 필드 검사
-↓
-욕설 감지 → 400 반환 (LLM 호출 없음) ✅
-정상 입력 → 다음 처리로 통과 ✅
-```
+### 2차 필터링 (WebSocket)
 
-### 2차 필터링 (AI 시스템 프롬프트)
+`api/routes/stt.py`의 `process_and_send`에서 `refined_text` 에이전트 전달 전 체크합니다.
+
+- 욕설 감지 시 에이전트 호출 없이 음성 응답만 반환
+
+### 3차 필터링 (AI 시스템 프롬프트)
 
 - "날씨 어때", "심심해" 등 주문 외 발화
 - LLM이 의미 판단 → "주문만 도와드릴 수 있어요" 응답
@@ -439,11 +429,12 @@ sadollar-kiosk/
 │   ├── main.py                    # FastAPI 서버 진입점 + 욕설 필터링 미들웨어
 │   └── routes/
 │       ├── menu.py                # 메뉴 API
+│       ├── sets.py                # 세트 메뉴 API
+│       ├── options.py             # 옵션 API
 │       ├── cart.py                # 장바구니 API
 │       ├── order.py               # 주문/결제 API
-│       ├── session.py             # 세션 API
 │       ├── search.py              # RAG 검색 API (입구 역할만)
-│       └── stt.py                 # STT/TTS API
+│       └── stt.py                 # STT/TTS API + WebSocket 욕설 필터링
 │
 ├── app/
 │   ├── agent.py                   # LangChain ReAct 에이전트
@@ -453,7 +444,7 @@ sadollar-kiosk/
 │   │   ├── loader.py              # ria_menu.json → Document 변환
 │   │   ├── vector_store.py        # ChromaDB 임베딩 저장
 │   │   ├── chroma.py              # ChromaDB 연결 및 검색
-│   │   └── search.py              # RAG 검색 로직 (AI 로직)
+│   │   └── search.py              # RAG 검색 로직
 │   └── tools/
 │       ├── menu_tools.py          # 메뉴 검색 도구
 │       └── cart_tools.py          # 장바구니/주문 도구
