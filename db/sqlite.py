@@ -146,28 +146,6 @@ def get_set_by_id(set_id: int):
     conn.close()
     return dict(row) if row else None
 
-
-# =====================================================
-# 장바구니 수량 증감
-# =====================================================
-
-def increase_cart(cart_id: int):
-    conn = get_connection()
-    conn.execute("UPDATE cart SET quantity = quantity + 1 WHERE cart_id = ?", (cart_id,))
-    conn.commit()
-    conn.close()
-
-def decrease_cart(cart_id: int):
-    conn = get_connection()
-    # 수량 1이면 삭제
-    row = conn.execute("SELECT quantity FROM cart WHERE cart_id = ?", (cart_id,)).fetchone()
-    if row and row["quantity"] <= 1:
-        conn.execute("DELETE FROM cart WHERE cart_id = ?", (cart_id,))
-    else:
-        conn.execute("UPDATE cart SET quantity = quantity - 1 WHERE cart_id = ?", (cart_id,))
-    conn.commit()
-    conn.close()
-
 # =====================================================
 # 장바구니
 # =====================================================
@@ -203,6 +181,23 @@ def update_cart(cart_id: int, quantity: int):
     conn.commit()
     conn.close()
 
+def increase_cart(cart_id: int):
+    conn = get_connection()
+    conn.execute("UPDATE cart SET quantity = quantity + 1 WHERE cart_id = ?", (cart_id,))
+    conn.commit()
+    conn.close()
+
+def decrease_cart(cart_id: int):
+    conn = get_connection()
+    # 수량 1이면 삭제
+    row = conn.execute("SELECT quantity FROM cart WHERE cart_id = ?", (cart_id,)).fetchone()
+    if row and row["quantity"] <= 1:
+        conn.execute("DELETE FROM cart WHERE cart_id = ?", (cart_id,))
+    else:
+        conn.execute("UPDATE cart SET quantity = quantity - 1 WHERE cart_id = ?", (cart_id,))
+    conn.commit()
+    conn.close()
+
 
 def delete_cart_item(cart_id: int):
     conn = get_connection()
@@ -221,6 +216,13 @@ def clear_cart(session_id: str):
 # =====================================================
 # 주문/결제
 # =====================================================
+
+def get_order_by_id(order_id: int):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM orders WHERE order_id = ?", (order_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
 
 def create_order(session_id: str, total_price: int, payment_method: str):
     conn = get_connection()
