@@ -29,11 +29,12 @@ def _build_search_terms(normalized: str, clean_name: str) -> list[str]:
 
 
 @tool
-def add_to_cart(item_name: str, quantity: int = 1, force: bool = False) -> str:
+def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list = []) -> str:
     """장바구니에 메뉴를 추가한다.
 
     item_name: 손님이 말한 메뉴명. 정확하지 않아도 자동으로 유사 메뉴를 찾아준다.
-    force: True면 알레르기 경고를 무시하고 강제로 담는다. 손님이 알레르기 확인 후 담겠다고 했을 때만 True로 설정하라.
+    customer_allergies: 손님이 대화 중 언급한 알레르기 성분 목록. 언급이 없으면 빈 리스트로 두어라.
+                        예) 손님이 "새우 알레르기 있어요" → ["새우"]
     """
     conn = sqlite3.connect(DB_PATH)
     conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
@@ -65,17 +66,18 @@ def add_to_cart(item_name: str, quantity: int = 1, force: bool = False) -> str:
             )
             rows = cur.fetchall()
 
-            # 가장 긴 토큰으로 추가 검색해서 AND 결과에 없는 메뉴 병합.
-            longest_token = max(tokens, key=len)
-            cur.execute(
-                "SELECT id, price, name, allergy FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
-                (f"%{longest_token}%",)
-            )
-            existing_ids = {r[0] for r in rows}
-            for row in cur.fetchall():
-                if row[0] not in existing_ids:
-                    rows.append(row)
-                    existing_ids.add(row[0])
+            # AND 결과가 있을 때만 가장 긴 토큰으로 추가 검색해서 병합.
+            if rows:
+                longest_token = max(tokens, key=len)
+                cur.execute(
+                    "SELECT id, price, name, allergy FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
+                    (f"%{longest_token}%",)
+                )
+                existing_ids = {r[0] for r in rows}
+                for row in cur.fetchall():
+                    if row[0] not in existing_ids:
+                        rows.append(row)
+                        existing_ids.add(row[0])
 
         # 3차: 접두어를 긴 것부터 수집, 검색어 절반 길이까지 내려가며 누락 메뉴 추가.
         if not rows:
@@ -106,10 +108,12 @@ def add_to_cart(item_name: str, quantity: int = 1, force: bool = False) -> str:
 
     menu_id, price_str, actual_name, allergy = rows[0]
 
-    # 알레르기 정보가 있으면 경고 반환 (force=True면 건너뜀).
-    if not force and allergy:
-        conn.close()
-        return f"'{actual_name}'에 알레르기 유발 성분이 포함되어 있습니다: {allergy}\n그래도 담으시겠어요?"
+    # 손님이 언급한 알레르기 성분이 메뉴에 포함되면 담기 거부
+    if customer_allergies and allergy:
+        matched = [a for a in customer_allergies if a in allergy]
+        if matched:
+            conn.close()
+            return f"'{actual_name}'에 {', '.join(matched)} 성분이 포함되어 있어 추가할 수 없습니다."
     try:
         unit_price = int(price_str) if isinstance(price_str, int) else int(price_str.replace(",", ""))
     except (ValueError, AttributeError):
@@ -200,7 +204,7 @@ def remove_from_cart(item_name: str) -> str:
     else:
         rows = []
 
-        # 2차: AND 검색 (다중 토큰)
+        # 2차: AND 검색 + 가장 긴 토큰 병합
         if len(tokens) > 1:
             and_conditions = " AND ".join(["REPLACE_SPACE(m.name) LIKE ?" for _ in tokens])
             cur.execute(
@@ -211,19 +215,20 @@ def remove_from_cart(item_name: str) -> str:
             )
             rows = cur.fetchall()
 
-            # 가장 긴 토큰으로 추가 검색해서 AND 결과에 없는 메뉴 병합
-            longest_token = max(tokens, key=len)
-            cur.execute(
-                """SELECT m.id, m.name FROM cart c
-                   JOIN menu m ON c.menu_id = m.id
-                   WHERE c.session_id = ? AND REPLACE_SPACE(m.name) LIKE ?""",
-                (session_id, f"%{longest_token}%")
-            )
-            existing_ids = {r[0] for r in rows}
-            for row in cur.fetchall():
-                if row[0] not in existing_ids:
-                    rows.append(row)
-                    existing_ids.add(row[0])
+            # AND 결과가 있을 때만 가장 긴 토큰으로 추가 검색해서 병합
+            if rows:
+                longest_token = max(tokens, key=len)
+                cur.execute(
+                    """SELECT m.id, m.name FROM cart c
+                       JOIN menu m ON c.menu_id = m.id
+                       WHERE c.session_id = ? AND REPLACE_SPACE(m.name) LIKE ?""",
+                    (session_id, f"%{longest_token}%")
+                )
+                existing_ids = {r[0] for r in rows}
+                for row in cur.fetchall():
+                    if row[0] not in existing_ids:
+                        rows.append(row)
+                        existing_ids.add(row[0])
 
         # 3차: 접두어 단계별 수집
         if not rows:
@@ -294,7 +299,7 @@ def update_cart_quantity(item_name: str, quantity: int) -> str:
     else:
         rows = []
 
-        # 2차: AND 검색 (다중 토큰)
+        # 2차: AND 검색 + 가장 긴 토큰 병합
         if len(tokens) > 1:
             and_conditions = " AND ".join(["REPLACE_SPACE(m.name) LIKE ?" for _ in tokens])
             cur.execute(
@@ -305,19 +310,20 @@ def update_cart_quantity(item_name: str, quantity: int) -> str:
             )
             rows = cur.fetchall()
 
-            # 가장 긴 토큰으로 추가 검색해서 AND 결과에 없는 메뉴 병합
-            longest_token = max(tokens, key=len)
-            cur.execute(
-                """SELECT m.id, m.name FROM cart c
-                   JOIN menu m ON c.menu_id = m.id
-                   WHERE c.session_id = ? AND REPLACE_SPACE(m.name) LIKE ?""",
-                (session_id, f"%{longest_token}%")
-            )
-            existing_ids = {r[0] for r in rows}
-            for row in cur.fetchall():
-                if row[0] not in existing_ids:
-                    rows.append(row)
-                    existing_ids.add(row[0])
+            # AND 결과가 있을 때만 가장 긴 토큰으로 추가 검색해서 병합
+            if rows:
+                longest_token = max(tokens, key=len)
+                cur.execute(
+                    """SELECT m.id, m.name FROM cart c
+                       JOIN menu m ON c.menu_id = m.id
+                       WHERE c.session_id = ? AND REPLACE_SPACE(m.name) LIKE ?""",
+                    (session_id, f"%{longest_token}%")
+                )
+                existing_ids = {r[0] for r in rows}
+                for row in cur.fetchall():
+                    if row[0] not in existing_ids:
+                        rows.append(row)
+                        existing_ids.add(row[0])
 
         # 3차: 접두어 단계별 수집
         if not rows:
@@ -371,6 +377,9 @@ def confirm_order(payment_method: str = "카드") -> str:
     손님이 "주문할게요", "결제할게요", "이걸로 할게요" 등을 말할 때 사용하라.
     payment_method: 결제 수단. 기본값 카드. 카드/모바일 중 하나.
     """
+    if payment_method not in ("카드", "모바일"):
+        return "결제 수단은 카드 또는 모바일 중 하나를 선택해 주세요."
+
     session_id = current_session_id.get()
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
