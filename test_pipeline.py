@@ -42,6 +42,7 @@ import argparse
 import asyncio
 import io
 import json
+import threading
 
 import numpy as np
 import sounddevice as sd
@@ -49,6 +50,9 @@ import websockets
 
 SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 800  # 16000Hz × 0.05s = 800 샘플 (50ms 단위, 서버 VAD와 동일)
+
+# TTS 재생 중 마이크 입력 차단용 플래그 (스레드 안전)
+_tts_playing = threading.Event()
 
 
 def play_audio(audio_bytes: bytes):
@@ -71,6 +75,9 @@ async def main(session_id: str = "test", play_audio_flag: bool = False):
     loop = asyncio.get_event_loop()
 
     def audio_callback(indata, frames, time_info, status):
+        # TTS 재생 중이면 마이크 입력을 버림 → 스피커 출력이 STT로 다시 들어가는 피드백 루프 방지
+        if _tts_playing.is_set():
+            return
         # sounddevice 내부 스레드에서 호출됨 → 이벤트 루프에 안전하게 전달
         chunk = indata[:, 0].astype(np.float32).tobytes()  # 스테레오면 첫 채널만 사용
         loop.call_soon_threadsafe(queue.put_nowait, chunk)
@@ -97,7 +104,19 @@ async def main(session_id: str = "test", play_audio_flag: bool = False):
                 if isinstance(msg, bytes):
                     # binary frame = TTS 오디오
                     if play_audio_flag:
-                        await asyncio.to_thread(play_audio, msg)
+                        _tts_playing.set()
+                        # 큐에 남아있는 직전 청크도 버림 (재생 시작 직전 잡음 제거)
+                        while not queue.empty():
+                            try:
+                                queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                break
+                        try:
+                            await asyncio.to_thread(play_audio, msg)
+                        finally:
+                            # 음향 잔향이 마이크에 남을 수 있으므로 짧게 대기 후 해제
+                            await asyncio.sleep(0.3)
+                            _tts_playing.clear()
                 else:
                     # text frame = JSON 응답
                     data = json.loads(msg)
