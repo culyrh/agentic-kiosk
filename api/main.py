@@ -12,6 +12,8 @@ from api.routes.order import router as order_router
 from api.routes.session import router as session_router
 from api.routes.search import router as search_router
 from api.routes.options import router as options_router
+from api.routes.sets import router as sets_router
+
 
 # 욕설/비속어 키워드 목록
 BLOCKED_KEYWORDS = [
@@ -63,3 +65,4 @@ app.include_router(session_router)
 app.include_router(search_router)
 app.include_router(stt_router)
 app.include_router(options_router)
+app.include_router(sets_router)

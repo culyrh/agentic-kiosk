@@ -12,7 +12,16 @@ Base URL: `http://127.0.0.1:8000`
 | menu | GET | /menu?category=버거 | 카테고리 필터 | query: `category` | `{"items": [...]}` | 없는 카테고리면 빈 배열 반환 |
 | menu | GET | /menu?q=불고기 | 키워드 검색 | query: `q` | `{"items": [...]}` | 없는 키워드면 빈 배열 반환 |
 | menu | GET | /menu/{id} | 단건 조회 | path: `menu_id` | `{id, name, category, badge, price, img_url, allergy, origin, nutrition, spicy_level}` | 없는 ID → 404 |
-| menu | GET | /menu/{id}/set | 세트 조회 | path: `menu_id` | `{"set": {set_id, burger_menu_id, name, set_price, img_url, allergy, origin, calorie}}` | 세트 없음 → 404 |
+| menu | GET | /menu/{id}/set | 버거 ID로 세트 조회 | path: `menu_id` | `{"set": {set_id, burger_menu_id, name, set_price, img_url, allergy, origin, calorie}}` | 세트 없음 → 404 |
+
+---
+
+## 세트 메뉴
+
+| 카테고리 | 메서드 | 엔드포인트 | 설명 | 입력 | 출력 | 예외처리 / 정책 |
+|----------|--------|-----------|------|------|------|----------------|
+| sets | GET | /sets | 전체 세트 목록 조회 | - | `{"items": [{set_id, burger_menu_id, name, set_price, img_url, allergy, origin, calorie, burger_name, burger_img_url}]}` | - |
+| sets | GET | /sets/{set_id} | 세트 단건 조회 | path: `set_id` | `{set_id, burger_menu_id, name, set_price, img_url, allergy, origin, calorie, burger_name, burger_img_url}` | 없는 ID → 404 |
 
 ---
 
@@ -32,7 +41,9 @@ Base URL: `http://127.0.0.1:8000`
 |----------|--------|-----------|------|------|------|----------------|
 | cart | GET | /cart/{session_id} | 장바구니 조회 | path: `session_id` | `{"items": [{cart_id, menu_id, name, img_url, is_set, drink_option, side_option, quantity, unit_price}], "total": 0}` | 비어있으면 items=[] |
 | cart | POST | /cart | 장바구니 담기 | body: `{session_id, menu_id, is_set, drink_option, side_option, quantity, unit_price}` | `{"cart_id": 1, "message": "장바구니에 담겼습니다."}` | - |
-| cart | PUT | /cart/{cart_id} | 수량 수정 | path: `cart_id`, body: `{quantity}` | `{"message": "수량이 수정됐습니다."}` | quantity < 1 → 400 |
+| cart | PUT | /cart/{cart_id} | 수량 직접 수정 | path: `cart_id`, body: `{quantity}` | `{"message": "수량이 수정됐습니다."}` | quantity < 1 → 400 |
+| cart | PATCH | /cart/{cart_id}/increase | 수량 +1 | path: `cart_id` | `{"message": "수량이 증가됐습니다."}` | - |
+| cart | PATCH | /cart/{cart_id}/decrease | 수량 -1 | path: `cart_id` | `{"message": "수량이 감소됐습니다."}` | 수량 1이면 자동 삭제 |
 | cart | DELETE | /cart/{cart_id} | 항목 삭제 | path: `cart_id` | `{"message": "삭제됐습니다."}` | - |
 | cart | DELETE | /cart/session/{session_id} | 전체 비우기 | path: `session_id` | `{"message": "장바구니가 비워졌습니다."}` | - |
 

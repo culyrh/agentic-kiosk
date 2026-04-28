@@ -120,6 +120,53 @@ def get_options(option_type: str = None):
     conn.close()
     return [dict(row) for row in rows]
 
+# =====================================================
+# 세트 메뉴
+# =====================================================
+
+def list_sets():
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT s.*, m.name as burger_name, m.img_url as burger_img_url
+        FROM set_menus s
+        JOIN menu m ON s.burger_menu_id = m.id
+        ORDER BY s.set_id ASC
+    """).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def get_set_by_id(set_id: int):
+    conn = get_connection()
+    row = conn.execute("""
+        SELECT s.*, m.name as burger_name, m.img_url as burger_img_url
+        FROM set_menus s
+        JOIN menu m ON s.burger_menu_id = m.id
+        WHERE s.set_id = ?
+    """, (set_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+# =====================================================
+# 장바구니 수량 증감
+# =====================================================
+
+def increase_cart(cart_id: int):
+    conn = get_connection()
+    conn.execute("UPDATE cart SET quantity = quantity + 1 WHERE cart_id = ?", (cart_id,))
+    conn.commit()
+    conn.close()
+
+def decrease_cart(cart_id: int):
+    conn = get_connection()
+    # 수량 1이면 삭제
+    row = conn.execute("SELECT quantity FROM cart WHERE cart_id = ?", (cart_id,)).fetchone()
+    if row and row["quantity"] <= 1:
+        conn.execute("DELETE FROM cart WHERE cart_id = ?", (cart_id,))
+    else:
+        conn.execute("UPDATE cart SET quantity = quantity - 1 WHERE cart_id = ?", (cart_id,))
+    conn.commit()
+    conn.close()
 
 # =====================================================
 # 장바구니
