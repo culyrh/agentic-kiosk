@@ -22,6 +22,8 @@
                clear_cart       : 장바구니 전체 비우기
            - 대화 히스토리를 session_id 단위로 메모리에 유지
     → receive() (서버 응답 수신 및 출력)
+        - text frame: JSON (stt_text, refined_text, voice, screen)
+        - binary frame: TTS MP3 오디오 (--play-audio 옵션 시 로컬 재생)
 
 주요 구조:
   - sounddevice 콜백은 별도 스레드에서 실행되므로 직접 ws.send()를 호출하면 안 됨
@@ -32,10 +34,13 @@
     Ctrl+C 전까지 스트리밍 유지
 
 사용:
-  python test_pipeline.py
+  python test_pipeline.py                # 텍스트 출력만
+  python test_pipeline.py --play-audio   # 텍스트 출력 + TTS 음성 재생 (백엔드 로컬 테스트용)
 """
 
+import argparse
 import asyncio
+import io
 import json
 
 import numpy as np
@@ -46,9 +51,21 @@ SAMPLE_RATE = 16000
 CHUNK_SAMPLES = 800  # 16000Hz × 0.05s = 800 샘플 (50ms 단위, 서버 VAD와 동일)
 
 
-async def main(session_id: str = "test"):
+def play_audio(audio_bytes: bytes):
+    """MP3 바이트를 로컬 스피커로 재생 (백엔드 테스트 전용)"""
+    import pygame
+    pygame.mixer.init()
+    pygame.mixer.music.load(io.BytesIO(audio_bytes))
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        pygame.time.wait(50)
+
+
+async def main(session_id: str = "test", play_audio_flag: bool = False):
     uri = f"ws://localhost:8000/stt/ws?session_id={session_id}"
     print("서버 연결 중...")
+    if play_audio_flag:
+        print("[오디오 재생 모드] TTS 음성을 로컬에서 재생합니다.\n")
 
     queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_event_loop()
@@ -69,15 +86,27 @@ async def main(session_id: str = "test"):
                 await ws.send(chunk)
 
         async def receive():
-            # 서버가 발화 종료를 감지하고 파이프라인 처리를 완료하면 JSON 응답을 보냄
-            # stt_text: Whisper 인식 원문
+            # 서버 응답은 두 종류의 frame으로 옴:
+            #   text frame  : JSON { stt_text, refined_text, voice, screen }
+            #   binary frame: TTS MP3 오디오 바이트 (JSON 직후 전송됨)
+            # stt_text   : Whisper 인식 원문
             # refined_text: LLM 정제 결과
-            # response: 에이전트 최종 응답
+            # voice      : 에이전트 응답 중 음성으로 읽을 내용
+            # screen     : 에이전트 응답 중 화면에만 표시할 내용 ([SCREEN] 태그 파싱 결과)
             async for msg in ws:
-                data = json.loads(msg)
-                print(f"[STT]  {data['stt_text']}")
-                print(f"[정제] {data['refined_text']}")
-                print(f"[응답] {data['response']}\n")
+                if isinstance(msg, bytes):
+                    # binary frame = TTS 오디오
+                    if play_audio_flag:
+                        await asyncio.to_thread(play_audio, msg)
+                else:
+                    # text frame = JSON 응답
+                    data = json.loads(msg)
+                    print(f"[STT]  {data['stt_text']}")
+                    print(f"[정제] {data['refined_text']}")
+                    print(f"[음성] {data['voice']}")
+                    if data['screen']:
+                        print(f"[화면] {data['screen']}")
+                    print()
 
         send_task = asyncio.create_task(send_audio())
         recv_task = asyncio.create_task(receive())
@@ -99,7 +128,11 @@ async def main(session_id: str = "test"):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--play-audio", action="store_true", help="TTS 음성을 로컬 스피커로 재생 (백엔드 테스트용)")
+    args = parser.parse_args()
+
     try:
-        asyncio.run(main())
+        asyncio.run(main(play_audio_flag=args.play_audio))
     except KeyboardInterrupt:
         print("\n[종료]")

@@ -7,6 +7,7 @@ WS    WS   /stt/ws          - 오디오 청크 스트리밍 → 실시간 텍스
 
 import asyncio
 import json
+import re
 import tempfile
 from collections import deque
 from pathlib import Path
@@ -17,6 +18,7 @@ from fastapi import APIRouter, File, Query, UploadFile, WebSocket, WebSocketDisc
 from app.refine import refine_stt
 from app.agent import chat
 from voice.stt import load_model, transcribe, transcribe_array
+from voice.tts import synthesize
 
 router = APIRouter(prefix="/stt", tags=["stt"])
 
@@ -30,6 +32,14 @@ SILENCE_CHUNKS = 16
 MIN_SPEECH_CHUNKS = 6
 
 _model = None
+
+
+def split_response(text: str) -> tuple[str, str]:
+    """에이전트 응답에서 [SCREEN]...[/SCREEN] 태그를 파싱해 음성/화면 내용을 분리"""
+    screen_matches = re.findall(r'\[SCREEN\](.*?)\[/SCREEN\]', text, re.DOTALL)
+    voice = re.sub(r'\[SCREEN\].*?\[/SCREEN\]', '', text, flags=re.DOTALL).strip()
+    screen = screen_matches[0].strip() if screen_matches else ""
+    return voice, screen
 
 
 def get_model():
@@ -111,13 +121,19 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                 return
             refined_text = await asyncio.to_thread(refine_stt, stt_text.strip())
             response = await asyncio.to_thread(chat, refined_text, session_id)
+            voice, screen = split_response(response)
             await websocket.send_text(
                 json.dumps({
                     "stt_text": stt_text.strip(),
                     "refined_text": refined_text,
-                    "response": response,
+                    "voice": voice,
+                    "screen": screen,
                 }, ensure_ascii=False)
             )
+            # JSON 직후 TTS 오디오를 binary frame으로 전송 → 프론트가 받아서 바로 재생
+            if voice:
+                audio_bytes = await asyncio.to_thread(synthesize, voice)
+                await websocket.send_bytes(audio_bytes)
 
     try:
         while True:

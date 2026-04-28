@@ -93,8 +93,8 @@ def add_to_cart(item_name: str, quantity: int = 1) -> str:
 
     menu_id, price_str, actual_name = rows[0]
     try:
-        unit_price = int(price_str.replace(",", ""))
-    except ValueError:
+        unit_price = int(price_str) if isinstance(price_str, int) else int(price_str.replace(",", ""))
+    except (ValueError, AttributeError):
         unit_price = 0
 
     cur.execute(

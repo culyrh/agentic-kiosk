@@ -42,7 +42,7 @@ python db_setup.py
 python insert_data.py
 
 # 3. ChromaDB 벡터 생성 (메뉴 검색용 임베딩)
-python test.py
+python build_index.py
 ```
 
 ### 세트 메뉴 크롤링 (데이터 업데이트 시)
@@ -144,7 +144,7 @@ TTS
 
 ## 전체 파이프라인 테스트
 
-프론트엔드 없이 서버의 파이프라인(STT → LLM 정제 → 에이전트)이 정상 동작하는지 로컬에서 확인하는 테스트 스크립트입니다. **실제 키오스크에서는 브라우저/앱이 이 역할을 대신합니다.**
+프론트엔드 없이 서버의 파이프라인(STT → LLM 정제 → 에이전트 → TTS 출력)이 정상 동작하는지 로컬에서 확인하는 테스트 스크립트입니다. **실제 키오스크에서는 브라우저/앱이 이 역할을 대신합니다.**
 
 서버를 먼저 실행한 뒤, 별도 터미널에서 실행합니다.
 
@@ -152,8 +152,11 @@ TTS
 # 서버 실행
 uvicorn api.main:app --reload
 
-# 파이프라인 테스트 (별도 터미널)
+# 파이프라인 테스트 - 텍스트 출력만 (별도 터미널)
 python test_pipeline.py
+
+# TTS 음성까지 로컬 스피커로 재생 (백엔드 테스트용)
+python test_pipeline.py --play-audio
 ```
 
 말하면 아래와 같이 출력됩니다.
@@ -163,8 +166,17 @@ python test_pipeline.py
 
 [STT]  불고기버그 하나 담아줘
 [정제] 불고기버거 하나 담아줘
-[응답] 불고기버거를 장바구니에 담았습니다. 다른 메뉴도 추가하시겠어요?
+[음성] 불고기버거를 장바구니에 담았습니다. 다른 메뉴도 추가하시겠어요?
+
+[STT]  음료 선택할게요
+[정제] 음료 선택할게요
+[음성] 음료를 선택해주세요.
+[화면] 콜라
+사이다
+제로슈거콜라
 ```
+
+`--play-audio` 옵션을 사용하면 `pygame`이 설치되어 있어야 하며, TTS 응답이 로컬 스피커로 재생됩니다.
 
 `Ctrl+C`로 종료합니다.
 
@@ -399,19 +411,33 @@ POST /stt/transcribe
 
 #### WS /stt/ws (키오스크 브라우저 연동용)
 
-브라우저에서 마이크 오디오를 float32 PCM 청크(50ms 단위)로 전송하면, 발화가 끝날 때마다 전체 파이프라인(STT → LLM 정제 → 에이전트)을 처리하고 최종 응답을 반환합니다.
+브라우저에서 마이크 오디오를 float32 PCM 청크(50ms 단위)로 전송하면, 발화가 끝날 때마다 전체 파이프라인(STT → LLM 정제 → 에이전트 → TTS)을 처리하고 응답을 반환합니다.
 
 파이프라인은 `asyncio.create_task`로 백그라운드에서 실행되므로, 처리 중에도 VAD가 계속 동작해 다음 발화를 즉시 감지할 수 있습니다.
 
 ```
 WS /stt/ws?session_id={session_id}
-송신: float32 PCM 바이트 (16kHz, mono, 50ms 청크)
-수신: {
+```
+
+**송신**: 마이크에서 받은 float32 PCM 바이트를 50ms 단위(800샘플, 16kHz mono)로 끊김 없이 전송합니다. VAD는 서버에서 처리하므로 클라이언트는 발화 감지 없이 계속 전송하면 됩니다.
+
+**수신**: 발화가 끝날 때마다 2개의 frame이 순서대로 옵니다.
+
+1. **text frame** (JSON): 화면 전환에 사용
+```json
+{
   "stt_text": "Whisper 인식 원문",
   "refined_text": "LLM 정제 결과",
-  "response": "에이전트 최종 응답"
+  "voice": "음성으로 읽을 텍스트",
+  "screen": "화면에만 표시할 텍스트 (선택지 등, 없으면 빈 문자열)"
 }
 ```
+
+2. **binary frame** (MP3 바이트): `voice` 텍스트를 TTS로 변환한 오디오, text frame 직후 전송됨
+
+**프론트엔드 처리 방법**:
+- `typeof message === 'string'` → JSON 파싱 → `voice`로 화면 전환, `screen`이 있으면 선택지 UI 표시
+- `message instanceof Blob` 또는 `ArrayBuffer` → MP3 오디오로 재생
 
 ---
 
@@ -527,7 +553,8 @@ sadollar-ai/
 │
 ├── voice/
 │   ├── stt.py                     # Whisper STT (파일 인식)
-│   └── stt_realtime.py            # Whisper STT (실시간 마이크 인식, listen_once 포함)
+│   ├── stt_realtime.py            # Whisper STT (실시간 마이크 인식, listen_once 포함)
+│   └── tts.py                     # TTS 음성 합성 (edge-tts, 한국어 여자 목소리)
 │
 ├── tests/
 │   ├── 뉴스녹음.m4a
@@ -535,7 +562,7 @@ sadollar-ai/
 │
 ├── db_setup.py                    # DB 테이블 생성 스크립트 (최초 1회)
 ├── insert_data.py                 # JSON → DB 데이터 삽입 스크립트 (최초 1회)
-├── test.py                        # ChromaDB 초기화 (최초 1회)
+├── build_index.py                 # ChromaDB 초기화 (최초 1회)
 ├── test_pipeline.py               # 전체 파이프라인 테스트 (마이크 → 에이전트 응답)
 ├── requirements.txt
 └── .env                           # OpenAI API 키 설정 (gitignore 제외)
