@@ -192,9 +192,9 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
 | `get_set_info` | menu_tools.py | 세트 메뉴 정보 + 옵션 목록 |
 | `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |
-| 'update_cart_quantity' | cart_tools.py | 장바구니 수량 변경 (0 이하면 자동 제거) |
+| `update_cart_quantity` | cart_tools.py | 장바구니 수량 변경 (0 이하면 자동 제거) |
 | `remove_from_cart` | cart_tools.py | 장바구니에서 특정 메뉴 제거 |
-| 'upgrade_to_set' | cart_tools.py | 단품 버거 → 세트 전환 (음료/사이드 지정, 추가금액 반영) |
+| `upgrade_to_set` | cart_tools.py | 단품 버거 → 세트 전환 (음료/사이드 지정, 추가금액 반영) |
 | `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
 | `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
 | `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
