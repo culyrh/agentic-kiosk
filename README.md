@@ -61,7 +61,145 @@ python insert_data.py
 
 ---
 
-## DB 구조
+## 시스템 동작 구조
+
+```
+사용자 음성
+↓
+STT (Whisper)
+↓
+텍스트
+↓
+LLM 정제 (GPT-4o-mini) — STT 오인식 교정, 잡음성 발화 정리
+↓
+AI 에이전트 (LangChain + GPT-4o)
+↓
+도구 선택
+↓
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│  [메뉴 검색]              [메뉴 조회]         [장바구니/주문]     │
+│  search_menu              get_menu_info      add_to_cart       │
+│                           get_menu_by_price  remove_from_cart  │
+│       ↓                        ↓             view_cart         │
+│  query(의미) 있음?              ↓             confirm_order     │
+│  ┌──YES──┐               SQLite              clear_cart        │
+│  ↓       ↓               (이름 LIKE 검색)          ↓            │
+│ ChromaDB  SQLite               ↓             SQLite            │
+│ (벡터검색) (카테고리           메뉴 정보      (이름 기반 매칭      │ 
+│  의미기반)  전체조회,           반환          → cart/orders      │ 
+│     ↓      LIMIT+OFFSET)                     테이블 처리)       │ 
+│  텍스트     ↓                                      ↓           │
+│  반환      텍스트 반환                          결과 반환        │
+└────────────────────────────────────────────────────────────────┘
+↓
+LLM 응답 생성
+↓
+TTS
+↓
+음성 출력
+```
+
+### 1. 설계 원칙
+
+- **ChromaDB**: `search_menu`에서 의미 기반 쿼리(query 파라미터)가 있을 때만 사용
+- **카테고리 전체 조회**: SQLite LIMIT/OFFSET 페이지네이션으로 처리 (ChromaDB k 제한 우회)
+- **장바구니 추가/제거**: ChromaDB를 거치지 않고 SQLite 이름 매칭으로 직접 처리
+- **장바구니/주문**: SQLite `cart`, `orders` 테이블에서 전담 처리
+
+### 2. Self-querying 미적용 이유 및 향후 계획
+
+현재 `search_menu`는 LangChain Self-querying Retriever 대신 **수동 파라미터 추출** 방식을 사용한다.
+
+**현재 방식 (수동 파라미터 추출)**
+- LLM이 사용자 발화에서 `query`, `category`, `badge`, `exclude`, `exclude_names`, `offset` 파라미터를 직접 추출해 tool에 넘김
+- tool docstring의 예시가 LLM의 파라미터 추출을 가이드
+- 결과적으로 Self-querying과 동일한 효과
+
+**Self-querying을 도입하지 않은 이유**
+- DB 스키마가 아직 확정되지 않아 ChromaDB 메타데이터 구조가 바뀔 수 있음
+- 현재 수동 방식으로도 `category`, `badge` 필터가 충분히 동작함
+
+**Self-querying 도입을 고려할 시점**
+- DB/ChromaDB 스키마 확정 이후
+- "세트 포함 + 8000원 이하 + 매운 버거" 같은 복합 필터 쿼리 실패 케이스가 쌓일 때
+
+### 3. 현재 한계 및 향후 개선 계획
+
+**대화 히스토리**
+- 현재: 메모리(`defaultdict`) 기반 → 서버 재시작 시 히스토리 소멸
+- 현재: 대화가 길어질수록 히스토리가 무한정 쌓여 토큰 비용 증가
+- 향후: Redis/DB 영속화, 슬라이딩 윈도우(최근 N턴만 유지) 도입 예정
+
+**remove_from_cart 중복 호출**
+- 현재: SYSTEM_PROMPT 지시 + 턴당 1회 플래그(`_remove_called`)로 방지
+- 한계: LLM이 히스토리에서 정확한 메뉴명을 알고 있을 때 엣지케이스 발생 가능
+
+**주문 외 발화 처리**
+- 현재: 별도 필터 없음 → LLM이 주문 외 질문도 응답해 비용 낭비
+- 향후: 백엔드 미들웨어(1차) + SYSTEM_PROMPT(2차) 2단계 필터링 예정 (Issue 참고)
+
+---
+
+## 전체 파이프라인 테스트
+
+프론트엔드 없이 서버의 파이프라인(STT → LLM 정제 → 에이전트 → TTS 출력)이 정상 동작하는지 로컬에서 확인하는 테스트 스크립트입니다. **실제 키오스크에서는 브라우저/앱이 이 역할을 대신합니다.**
+
+서버를 먼저 실행한 뒤, 별도 터미널에서 실행합니다.
+
+```bash
+# 서버 실행
+uvicorn api.main:app --reload
+
+# 파이프라인 테스트 - 텍스트 출력만 (별도 터미널)
+python test_pipeline.py
+
+# TTS 음성까지 로컬 스피커로 재생 (백엔드 테스트용)
+python test_pipeline.py --play-audio
+```
+
+말하면 아래와 같이 출력됩니다.
+
+```
+마이크 대기 중... (Ctrl+C로 종료)
+
+[STT]  불고기버그 하나 담아줘
+[정제] 불고기버거 하나 담아줘
+[음성] 불고기버거를 장바구니에 담았습니다. 다른 메뉴도 추가하시겠어요?
+
+[STT]  음료 선택할게요
+[정제] 음료 선택할게요
+[음성] 음료를 선택해주세요.
+[화면] 콜라
+사이다
+제로슈거콜라
+```
+
+`--play-audio` 옵션을 사용하면 `pygame`이 설치되어 있어야 하며, TTS 응답이 로컬 스피커로 재생됩니다.
+
+`Ctrl+C`로 종료합니다.
+
+---
+
+## 1. AI 에이전트 Tool 함수 목록
+
+LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
+
+| 함수 | 파일 | 기능 |
+|------|------|------|
+| `search_menu` | menu_tools.py | RAG 기반 메뉴 검색 |
+| `get_menu_by_price` | menu_tools.py | 가격 기준 메뉴 조회 (최저/최고/예산 범위) |
+| `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
+| `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |
+| `remove_from_cart` | cart_tools.py | 장바구니에서 특정 메뉴 제거 |
+| `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
+| `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
+| `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
+| `get_set_info` | menu_tools.py | 세트 메뉴 정보 + 옵션 목록 |
+| `upgrade_to_set` | cart_tools.py | 단품 → 세트 업그레이드 (추가금액 반영) |
+---
+
+## 2. DB 구조
 
 ### SQLite 테이블 (ria_menu.db)
 
