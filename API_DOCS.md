@@ -40,7 +40,7 @@ Base URL: `http://127.0.0.1:8000`
 | 카테고리 | 메서드 | 엔드포인트 | 설명 | 입력 | 출력 | 예외처리 / 정책 |
 |----------|--------|-----------|------|------|------|----------------|
 | cart | GET | /cart/{session_id} | 장바구니 조회 | path: `session_id` | `{"items": [{cart_id, menu_id, name, img_url, is_set, drink_option, side_option, quantity, unit_price}], "total": 0}` | 비어있으면 items=[] |
-| cart | POST | /cart | 장바구니 담기 | body: `{session_id, menu_id, is_set, drink_option, side_option, quantity, unit_price}` | `{"cart_id": 1, "message": "장바구니에 담겼습니다."}` | - |
+| cart | POST | /cart | 장바구니 담기 | body: `{session_id, menu_id, is_set, drink_option, side_option, quantity, unit_price}` | `{"cart_id": 1, "message": "장바구니에 담겼습니다."}` | 없는 menu_id → 404 / quantity < 1 → 400 / unit_price 미입력 시 DB에서 자동 설정 |
 | cart | PUT | /cart/{cart_id} | 수량 직접 수정 | path: `cart_id`, body: `{quantity}` | `{"message": "수량이 수정됐습니다."}` | quantity < 1 → 400 |
 | cart | PATCH | /cart/{cart_id}/increase | 수량 +1 | path: `cart_id` | `{"message": "수량이 증가됐습니다."}` | - |
 | cart | PATCH | /cart/{cart_id}/decrease | 수량 -1 | path: `cart_id` | `{"message": "수량이 감소됐습니다."}` | 수량 1이면 자동 삭제 |
@@ -54,18 +54,8 @@ Base URL: `http://127.0.0.1:8000`
 | 카테고리 | 메서드 | 엔드포인트 | 설명 | 입력 | 출력 | 예외처리 / 정책 |
 |----------|--------|-----------|------|------|------|----------------|
 | order | POST | /order | 주문 생성 | body: `{session_id, payment_method}` | `{"order_id": 1, "total_price": 15000, "message": "주문이 생성됐습니다."}` | 장바구니 비어있음 → 400 |
-| order | POST | /order/{order_id}/payment | 결제 완료 | path: `order_id`, body: `{session_id}` | `{"message": "결제가 완료됐습니다.", "order_id": 1}` | 결제 완료 후 장바구니 자동 비워짐 |
+| order | POST | /order/{order_id}/payment | 결제 완료 | path: `order_id`, body: `{session_id}` | `{"message": "결제가 완료됐습니다.", "order_id": 1}` | 없는 order_id → 404 / 이미 결제된 주문 → 400 / 결제 완료 후 장바구니 자동 비워짐 |
 | order | GET | /order/{session_id} | 주문 내역 조회 | path: `session_id` | `{"orders": [{order_id, session_id, total_price, payment_method, status, created_at}]}` | 없으면 빈 배열 반환 |
-
----
-
-## 세션
-
-| 카테고리 | 메서드 | 엔드포인트 | 설명 | 입력 | 출력 | 예외처리 / 정책 |
-|----------|--------|-----------|------|------|------|----------------|
-| session | POST | /session/{session_id} | 세션 생성 | path: `session_id` | `{"session_id": "abc123", "message": "세션이 생성됐습니다."}` | 이미 존재하면 무시 (INSERT OR IGNORE) |
-| session | GET | /session/{session_id} | 세션 조회 | path: `session_id` | `{session_id, current_state, last_recommended, updated_at}` | 없는 세션 → 404 |
-| session | PUT | /session/{session_id} | 세션 업데이트 | path: `session_id`, body: `{current_state, last_recommended}` | `{"message": "세션이 업데이트됐습니다."}` | - |
 
 ---
 
@@ -90,6 +80,7 @@ Base URL: `http://127.0.0.1:8000`
 | 항목 | 내용 |
 |------|------|
 | 욕설 필터링 | 모든 POST 요청의 text/query/message 필드에 욕설 감지 시 즉시 400 반환 (LLM 호출 없음) |
+| WebSocket 욕설 필터링 | refined_text 에이전트 전달 전 욕설 감지 시 에이전트 호출 없이 음성 응답 반환 |
 | 응답 형식 | 모든 응답은 JSON |
 | 서버 실행 | `python -m uvicorn api.main:app --reload` |
 | Swagger UI | http://127.0.0.1:8000/docs |
