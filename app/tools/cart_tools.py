@@ -1,4 +1,4 @@
-
+#/app/tools/cart_tools.py
 import re
 import sqlite3
 from langchain.tools import tool
@@ -110,7 +110,10 @@ def add_to_cart(item_name: str, quantity: int = 1, force: bool = False) -> str:
     if not force and allergy:
         conn.close()
         return f"'{actual_name}'에 알레르기 유발 성분이 포함되어 있습니다: {allergy}\n그래도 담으시겠어요?"
-    unit_price = int(price_str)
+    try:
+        unit_price = int(price_str) if isinstance(price_str, int) else int(price_str.replace(",", ""))
+    except (ValueError, AttributeError):
+        unit_price = 0
     session_id = current_session_id.get()
 
     # 이미 담긴 메뉴면 수량 증가, 없으면 새로 추가.

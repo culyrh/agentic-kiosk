@@ -1,7 +1,7 @@
 # api/routes/cart.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from db.sqlite import get_cart, add_cart, update_cart, delete_cart_item, clear_cart
+from db.sqlite import get_cart, add_cart, update_cart, delete_cart_item, clear_cart, increase_cart, decrease_cart
 
 router = APIRouter(prefix="/cart", tags=["cart"])
 
@@ -40,6 +40,19 @@ def update_cart_item(cart_id: int, req: CartUpdateRequest):
         raise HTTPException(status_code=400, detail="수량은 1 이상이어야 합니다.")
     update_cart(cart_id, req.quantity)
     return {"message": "수량이 수정됐습니다."}
+
+# 수량 +1
+@router.patch("/{cart_id}/increase")
+def increase_cart_item(cart_id: int):
+    increase_cart(cart_id)
+    return {"message": "수량이 증가됐습니다."}
+
+# 수량 -1 (1이면 자동 삭제)
+@router.patch("/{cart_id}/decrease")
+def decrease_cart_item(cart_id: int):
+    decrease_cart(cart_id)
+    return {"message": "수량이 감소됐습니다."}
+
 
 # 항목 삭제
 @router.delete("/{cart_id}")
