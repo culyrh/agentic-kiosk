@@ -184,3 +184,67 @@ def search_menu(query: str = "", category: str = None, badge: str = None, exclud
         return "검색 결과가 없습니다."
 
     return "\n".join([content for content, score in results]) # llm한테 문자열 반환.
+
+    
+@tool
+def get_set_info(menu_id: int) -> str:
+    """특정 버거의 세트 메뉴 정보와 선택 가능한 음료/사이드 옵션 목록을 조회한다.
+    버거를 장바구니에 담은 직후 세트 여부를 확인할 때 사용하라.
+    menu_id: menu 테이블의 버거 id
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    # 세트 정보 조회
+    cur.execute("""
+        SELECT set_id, name, set_price, calorie
+        FROM set_menus
+        WHERE burger_menu_id = ?
+    """, (menu_id,))
+    set_row = cur.fetchone()
+
+    if not set_row:
+        conn.close()
+        return "세트 메뉴가 없습니다."
+
+    set_id, set_name, set_price, calorie = set_row
+
+    # 드링크 옵션 조회
+    cur.execute("""
+        SELECT o.option_id, m.name, o.extra_price
+        FROM options o
+        JOIN menu m ON o.menu_id = m.id
+        WHERE o.option_type = '드링크'
+        ORDER BY o.option_id ASC
+    """)
+    drinks = cur.fetchall()
+
+    # 사이드 옵션 조회
+    cur.execute("""
+        SELECT o.option_id, m.name, o.extra_price
+        FROM options o
+        JOIN menu m ON o.menu_id = m.id
+        WHERE o.option_type = '사이드'
+        ORDER BY o.option_id ASC
+    """)
+    sides = cur.fetchall()
+    conn.close()
+
+    drink_list = "\n".join([
+        f"{oid}: {name} (+{extra}원)" if extra > 0 else f"{oid}: {name}"
+        for oid, name, extra in drinks
+    ])
+    side_list = "\n".join([
+        f"{oid}: {name} (+{extra}원)" if extra > 0 else f"{oid}: {name}"
+        for oid, name, extra in sides
+    ])
+
+    return f"""세트명: {set_name}
+세트가격: {set_price}원
+칼로리: {calorie}
+
+[드링크 옵션]
+{drink_list}
+
+[사이드 옵션]
+{side_list}"""

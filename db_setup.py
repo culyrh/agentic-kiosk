@@ -108,6 +108,23 @@ cursor.execute("""
 """)
 print("   orders 테이블 완료")
 
+# 6. order_items 테이블 생성
+print("6. order_items 테이블 생성 중...")
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS order_items (
+        item_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id       INTEGER,
+        menu_id        INTEGER,
+        quantity       INTEGER,
+        unit_price     INTEGER,
+        drink_option   TEXT,
+        side_option    TEXT,
+        FOREIGN KEY (order_id) REFERENCES orders(order_id),
+        FOREIGN KEY (menu_id) REFERENCES menu(id)
+    )
+""")
+print("   order_items 테이블 완료")
+
 conn.commit()
 conn.close()
 

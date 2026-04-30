@@ -11,6 +11,7 @@ import asyncio
 import json
 import re
 import tempfile
+import time
 from collections import deque
 from pathlib import Path
 
@@ -89,6 +90,9 @@ async def transcribe_audio(
 
 # ── WebSocket ─────────────────────────────────────────────────
 
+# 타임아웃 설정
+INACTIVITY_TIMEOUT = 180  # 3분
+
 @router.websocket("/ws")
 async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
     """
@@ -107,6 +111,7 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
     speech_buffer: list[np.ndarray] = []
     silence_count = 0
     in_speech = False
+    last_activity_time = time.time()  # ← 마지막 활동 시간 기록
 
     # 동일 세션에서 파이프라인이 동시에 실행되면 conversation_history에 race condition 발생
     # (ToolMessage가 preceding tool_calls 없이 삽입됨 → OpenAI 400 에러)
@@ -117,10 +122,12 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
         # STT → 정제 → 에이전트를 순차 실행하되, asyncio.to_thread로 동기 함수를 별도
         # 스레드에서 실행해 이벤트 루프를 블로킹하지 않음
         # pipeline_lock으로 감싸 동시 실행을 막고 히스토리 race condition 방지
+        nonlocal last_activity_time
         async with pipeline_lock:
             stt_text = await asyncio.to_thread(transcribe_array, model, audio)
             if not stt_text.strip():
                 return
+            last_activity_time = time.time()  # ← 발화 감지 시 갱신
             refined_text = await asyncio.to_thread(refine_stt, stt_text.strip())
 
             # 욕설 필터링 (1차 필터링과 동일한 함수 재사용)
@@ -151,11 +158,50 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                 audio_bytes = await asyncio.to_thread(synthesize, voice)
                 await websocket.send_bytes(audio_bytes)
 
-    try:
+    async def check_inactivity():
+        """3분 비활성 시 장바구니 + 히스토리 초기화"""
         while True:
-            raw = await websocket.receive_bytes()
-            chunk = np.frombuffer(raw, dtype=np.float32)
+            await asyncio.sleep(30)  # 30초마다 체크
+            if time.time() - last_activity_time > INACTIVITY_TIMEOUT:
+                from db.sqlite import clear_cart
+                from app.agent import clear_history
+                clear_cart(session_id)
+                clear_history(session_id)
+                # 프론트에 초기화 알림
+                try:
+                    await websocket.send_text(
+                        json.dumps({
+                            "stt_text": "",
+                            "refined_text": "",
+                            "voice": "일정 시간 동안 이용이 없어 초기화되었습니다.",
+                            "screen": "TIMEOUT",
+                        }, ensure_ascii=False)
+                    )
+                except:
+                    pass
 
+    try:
+        # 타임아웃 체크 백그라운드 태스크 시작
+        asyncio.create_task(check_inactivity())
+        
+        while True:
+            raw = await websocket.receive()
+
+            # 터치 신호면 활동 시간만 갱신하고 넘어감
+            if raw.get("text"):
+                try:
+                    data = json.loads(raw["text"])
+                    if data.get("type") == "touch":
+                        last_activity_time = time.time()
+                except:
+                    pass
+                continue
+
+            # 오디오 청크 처리 (기존 VAD 로직)
+            if not raw.get("bytes"):
+                continue
+
+            chunk = np.frombuffer(raw["bytes"], dtype=np.float32)
             is_voice = rms(chunk) > ENERGY_THRESHOLD
 
             if not in_speech:
@@ -182,4 +228,7 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                         pre_roll.clear()
 
     except WebSocketDisconnect:
-        pass
+        from db.sqlite import clear_cart
+        from app.agent import clear_history
+        clear_cart(session_id)
+        clear_history(session_id)
