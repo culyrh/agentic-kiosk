@@ -13,6 +13,7 @@ from api.routes.order import router as order_router
 from api.routes.search import router as search_router
 from api.routes.options import router as options_router
 from api.routes.sets import router as sets_router
+from fastapi.middleware.cors import CORSMiddleware
 
 
 # 욕설/비속어 키워드 목록
@@ -39,6 +40,14 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Sadollar AI API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 1차 필터링 미들웨어
 @app.middleware("http")

@@ -192,7 +192,7 @@ def get_menu_info(name: str) -> str:
 
     # 1차: 완전 일치
     cur.execute(
-        "SELECT name, price, description, allergy FROM menu WHERE REPLACE_SPACE(name) = ?",
+        "SELECT name, price, description, allergy, origin, nutrition FROM menu WHERE REPLACE_SPACE(name) = ?",
         (normalized,)
     )
     rows = cur.fetchall()
@@ -202,7 +202,7 @@ def get_menu_info(name: str) -> str:
         if len(tokens) > 1:
             and_conditions = " AND ".join(["REPLACE_SPACE(name) LIKE ?" for _ in tokens])
             cur.execute(
-                f"SELECT name, price, description, allergy FROM menu WHERE {and_conditions}",
+                f"SELECT name, price, description, allergy, origin, nutrition FROM menu WHERE {and_conditions}",
                 [f"%{t}%" for t in tokens]
             )
             rows = cur.fetchall()
@@ -211,7 +211,7 @@ def get_menu_info(name: str) -> str:
             if rows:
                 longest_token = max(tokens, key=len)
                 cur.execute(
-                    "SELECT name, price, description, allergy FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
+                    "SELECT name, price, description, allergy, origin, nutrition FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
                     (f"%{longest_token}%",)
                 )
                 existing_ids = {r[0] for r in rows}
@@ -227,7 +227,7 @@ def get_menu_info(name: str) -> str:
             half = max(2, len(normalized) // 2)
             for term in terms:
                 cur.execute(
-                    "SELECT name, price, description, allergy FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
+                    "SELECT name, price, description, allergy, origin, nutrition FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
                     (f"%{term}%",)
                 )
                 for row in cur.fetchall():
@@ -243,20 +243,29 @@ def get_menu_info(name: str) -> str:
         return f"'{name}' 메뉴를 찾을 수 없습니다."
 
     return "\n".join([
-        f"메뉴명: {n}, 가격: {p}원, 설명: {d}, 알레르기: {a}"
-        for n, p, d, a in rows
+        f"메뉴명: {n}, 가격: {p}원, 설명: {d}, 알레르기: {a}, 원산지: {o}, 영양정보: {nu}"
+        for n, p, d, a, o, nu in rows
     ])
 
 
-def search_menu_logic(query: str="", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = []):
+def search_menu_logic(query: str="", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], max_spicy: int = None, min_spicy: int = None):
 
     # 쿼리·카테고리·배지 없이 exclude만 있으면 SQL로 전체 메뉴 조회 후 알레르기 필터
     if not query and not category and not badge and exclude:
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
+        spicy_clauses = []
+        spicy_params = []
+        if max_spicy is not None:
+            spicy_clauses.append("spicy_level <= ?")
+            spicy_params.append(max_spicy)
+        if min_spicy is not None:
+            spicy_clauses.append("spicy_level >= ?")
+            spicy_params.append(min_spicy)
+        spicy_clause = ("AND " + " AND ".join(spicy_clauses)) if spicy_clauses else ""
         cur.execute(
-            "SELECT name, price, description, allergy FROM menu WHERE category != '토핑' LIMIT 20 OFFSET ?",
-            (offset,)
+            f"SELECT name, price, description, allergy FROM menu WHERE 1=1 {spicy_clause} LIMIT 20 OFFSET ?",
+            spicy_params + [offset]
         )
         rows = cur.fetchall()
         conn.close()
@@ -271,24 +280,43 @@ def search_menu_logic(query: str="", category: str = None, badge: str = None, ex
             results.append((content, 0.0))
         return results[:3]
 
-    # 카테고리만 지정된 경우 SQL로 페이지네이션 조회
-    if category and not query and not badge:
+    # 카테고리 또는 배지만 지정된 경우 SQL로 페이지네이션 조회
+    if (category or badge) and not query:
         conn = sqlite3.connect(DB_PATH)
         conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
         cur = conn.cursor()
 
+        spicy_clauses = []
+        spicy_params = []
+        if max_spicy is not None:
+            spicy_clauses.append("spicy_level <= ?")
+            spicy_params.append(max_spicy)
+        if min_spicy is not None:
+            spicy_clauses.append("spicy_level >= ?")
+            spicy_params.append(min_spicy)
+        spicy_clause = ("AND " + " AND ".join(spicy_clauses)) if spicy_clauses else ""
+
+        base_conditions = []
+        base_params = []
+        if category:
+            base_conditions.append("category = ?")
+            base_params.append(category)
+        if badge:
+            base_conditions.append("badge LIKE ?")
+            base_params.append(f"%{badge}%")
+        base_clause = " AND ".join(base_conditions)
+
         if exclude_names:
-            # 제외할 메뉴명을 정규화해서 NOT LIKE 조건으로 필터
             excl_conditions = " AND ".join(["REPLACE_SPACE(name) NOT LIKE ?" for _ in exclude_names])
             excl_params = [f"%{n.replace(' ', '')}%" for n in exclude_names]
             cur.execute(
-                f"SELECT name, price, description, allergy FROM menu WHERE category = ? AND category != '토핑' AND {excl_conditions} LIMIT 3 OFFSET ?",
-                [category] + excl_params + [offset]
+                f"SELECT name, price, description, allergy FROM menu WHERE {base_clause} AND {excl_conditions} {spicy_clause} LIMIT 3 OFFSET ?",
+                base_params + excl_params + spicy_params + [offset]
             )
         else:
             cur.execute(
-                "SELECT name, price, description, allergy FROM menu WHERE category = ? AND category != '토핑' LIMIT 3 OFFSET ?",
-                (category, offset)
+                f"SELECT name, price, description, allergy FROM menu WHERE {base_clause} {spicy_clause} LIMIT 3 OFFSET ?",
+                base_params + spicy_params + [offset]
             )
         rows = cur.fetchall()
         conn.close()
@@ -297,11 +325,12 @@ def search_menu_logic(query: str="", category: str = None, badge: str = None, ex
         for name, price, description, allergy in rows:
             if exclude and any(item in (allergy or "") for item in exclude):
                 continue
-            content = f"메뉴명: {name}\n        카테고리: {category}\n        가격: {price}원\n        설명: {description}\n        알레르기: {allergy}"
+            content = f"메뉴명: {name}\n        가격: {price}원\n        설명: {description}\n        알레르기: {allergy}"
             results.append((content, 0.0))
         return results
 
     # 그 외: 벡터 검색
+    # spicy_level은 NULL이 많아 ChromaDB 필터가 해당 문서를 통째로 제외함 → 후처리로 대신 필터링
     conditions = []
     if category:
         conditions.append({"category": {"$eq": category}})
@@ -315,10 +344,13 @@ def search_menu_logic(query: str="", category: str = None, badge: str = None, ex
     else:
         filters = None
 
+    # spicy 필터가 있으면 더 많이 가져와서 후처리
+    k = 15 if (max_spicy is not None or min_spicy is not None) else 5
+
     db = get_chroma_db()
     results = db.similarity_search_with_score(
         query,
-        k=5,
+        k=k,
         filter=filters,
     )
 
@@ -326,46 +358,116 @@ def search_menu_logic(query: str="", category: str = None, badge: str = None, ex
         allergy = doc.metadata.get("allergy", "")
         return any(item in allergy for item in exclude)
 
-    use_threshold = (category is None and badge is None)
+    def spicy_ok(doc):
+        level = doc.metadata.get("spicy_level")
+        if max_spicy is not None and (level is None or level > max_spicy):
+            return False
+        if min_spicy is not None and (level is None or level < min_spicy):
+            return False
+        return True
+
+    # spicy 필터가 활성화되면 threshold를 완화 (유사도보다 spicy 조건이 우선)
+    spicy_active = max_spicy is not None or min_spicy is not None
+    use_threshold = (category is None and badge is None) and not spicy_active
     merged = [
         (doc, score) for doc, score in results
-        if (not use_threshold or score < 0.7) and not is_excluded(doc)
+        if (not use_threshold or score < 0.7) and not is_excluded(doc) and spicy_ok(doc)
     ]
 
     return [(doc.page_content, round(score, 4)) for doc, score in merged[:3]]
 
 
 @tool
-def search_menu(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = []) -> str:
-    """사용자 요청에 맞는 메뉴를 검색한다.
+def search_menu(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], max_spicy: int = None, min_spicy: int = None) -> str:
+    """사용자 요청에 맞는 메뉴를 검색한다. 메뉴 추천 또는 어떤 메뉴가 있는지 물어볼 때만 사용하라.
 
-    사용자 발화에서 아래 파라미터를 추출하여 각각 정확히 채워라.
-
-    - query: 재료, 맛, 특징 등 검색 의도 전체를 담아라. 유사어도 포함할 것.
+    - query: 재료, 맛, 특징 등 검색 의도 전체. 유사어도 포함.
       예) "초코 디저트" → "초코 초콜릿 디저트" / "새우 버거" → "새우 버거"
-    - category: 손님이 음식 종류를 명확히 언급할 때만 추출. 버거/디저트/치킨/음료/아이스샷 중 하나.
-      명확하지 않으면 반드시 None으로 둘 것. 추측해서 넣지 말 것.
-      예) "햄버거", "버거" → "버거"
-          "콜라", "음료", "커피", "주스" → "음료"
-          "아이스크림", "소프트아이스크림", "소프트콘" → "아이스샷"
-          "치킨", "윙", "순살" → "치킨"
-          "감자", "너겟", "치즈스틱", "디저트" → "디저트"
-          "오징어", "새우" 등 특정 재료만 언급 → None
-          "매콤한거", "달콤한거", "든든한거" 등 맛/느낌만 언급 → None
-    - badge: 신메뉴/베스트 언급 시 추출. NEW=신메뉴, BEST=베스트.
-      예) "신메뉴", "새로 나온" → "NEW" / "인기", "베스트" → "BEST"
+    - category: 음식 종류 명확히 언급 시만. 버거/디저트/치킨/음료/아이스샷. 불명확하면 None.
+      예) "햄버거/버거" → "버거" / "콜라/음료/커피" → "음료" / "아이스크림/소프트콘" → "아이스샷"
+          "치킨/윙/순살" → "치킨" / "감자/너겟/치즈스틱" → "디저트"
+          "오징어/새우" 등 재료만, "매콤한거" 등 맛만 언급 → None
+    - badge: 손님이 아래 키워드를 언급할 때 해당 값으로 설정. 언급 없으면 None.
+      NEW=신메뉴/새로나온, BEST=베스트/대표메뉴/인기, 비건=비건/채식,
+      추천=추천, 재주문1위=재주문1위/또먹고싶은, 카페인=카페인없는/디카페인
     - exclude: 제외할 알레르기 재료 목록.
-      예) "고기 빼고" → ["쇠고기"] / "유제품 알러지" → ["우유", "치즈"]
-    - exclude_names: 결과에서 제외할 메뉴명 목록. 손님이 특정 메뉴를 제외하고 다른 것을 원할 때 사용.
-      query에 "제외", "말고" 등을 넣지 말고 이 파라미터를 사용하라.
-      예) "콜라 말고 다른 음료" → exclude_names=["콜라"] / "콜라 사이다 빼고" → exclude_names=["콜라", "사이다"]
-    - offset: 이미 보여준 메뉴 수. 손님이 "다른 거", "더 있어?" 등 추가 목록을 요청하면
-      직전 search_menu 호출의 offset + 3으로 설정하라.
-      예) 처음 조회 → offset=0 / "다른 거 있어?" → offset=3 / 또 더 → offset=6
+    - exclude_names: 제외할 메뉴명 목록. query에 "제외/말고" 넣지 말고 이 파라미터 사용.
+    - offset: 이미 보여준 메뉴 수. "다른 거/더 있어?" → 직전 offset+3.
+    - max_spicy / min_spicy: 매운맛 범위 필터. spicy_level 기준(0=안매움, 1=약간, 2=보통, 3=매움, 10=극매움).
+      "안 매운 거/순한 거/덜 매운 거" → max_spicy=0
+      "약간 매운 거/조금 매운 거" → min_spicy=1, max_spicy=1
+      "보통 매운 거" → min_spicy=2, max_spicy=2
+      "매운 거 추천" → min_spicy=2
+      "아주 매운 거/극매운" → min_spicy=3
+      언급 없으면 둘 다 None.
     """
-    results = search_menu_logic(query, category, badge, exclude, offset, exclude_names)
+    results = search_menu_logic(query, category, badge, exclude, offset, exclude_names, max_spicy, min_spicy)
 
     if not results:
         return "검색 결과가 없습니다."
 
     return "\n".join([content for content, score in results]) # llm한테 문자열 반환.
+
+    
+@tool
+def get_set_info(menu_id: int) -> str:
+    """특정 버거의 세트 메뉴 정보와 선택 가능한 음료/사이드 옵션 목록을 조회한다.
+    버거를 장바구니에 담은 직후 세트 여부를 확인할 때 사용하라.
+    menu_id: menu 테이블의 버거 id
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    # 세트 정보 조회
+    cur.execute("""
+        SELECT set_id, name, set_price, calorie
+        FROM set_menus
+        WHERE burger_menu_id = ?
+    """, (menu_id,))
+    set_row = cur.fetchone()
+
+    if not set_row:
+        conn.close()
+        return "세트 메뉴가 없습니다."
+
+    set_id, set_name, set_price, calorie = set_row
+
+    # 드링크 옵션 조회
+    cur.execute("""
+        SELECT o.option_id, m.name, o.extra_price
+        FROM options o
+        JOIN menu m ON o.menu_id = m.id
+        WHERE o.option_type = '드링크'
+        ORDER BY o.option_id ASC
+    """)
+    drinks = cur.fetchall()
+
+    # 사이드 옵션 조회
+    cur.execute("""
+        SELECT o.option_id, m.name, o.extra_price
+        FROM options o
+        JOIN menu m ON o.menu_id = m.id
+        WHERE o.option_type = '사이드'
+        ORDER BY o.option_id ASC
+    """)
+    sides = cur.fetchall()
+    conn.close()
+
+    drink_list = "\n".join([
+        f"{oid}: {name} (+{extra}원)" if extra > 0 else f"{oid}: {name}"
+        for oid, name, extra in drinks
+    ])
+    side_list = "\n".join([
+        f"{oid}: {name} (+{extra}원)" if extra > 0 else f"{oid}: {name}"
+        for oid, name, extra in sides
+    ])
+
+    return f"""세트명: {set_name}
+세트가격: {set_price}원
+칼로리: {calorie}
+
+[드링크 옵션]
+{drink_list}
+
+[사이드 옵션]
+{side_list}"""

@@ -125,7 +125,6 @@ cursor.execute("""
 """)
 print("   order_items 테이블 완료")
 
-
 conn.commit()
 conn.close()
 
