@@ -6,6 +6,27 @@ from app.rag.chroma import get_chroma_db
 DB_PATH = "data/ria_menu.db"
 
 
+_SYNONYMS: dict[str, list[str]] = {
+    "소고기": ["쇠고기", "한우"],
+    "쇠고기": ["소고기", "한우"],
+    "한우":   ["소고기", "쇠고기"],
+    "돼지고기": ["포크", "삼겹", "베이컨"],
+    "닭고기": ["치킨", "닭"],
+    "치킨":   ["닭고기", "닭"],
+    "새우":   ["쉬림프"],
+    "계란":   ["달걀", "에그"],
+    "달걀":   ["계란", "에그"],
+}
+
+def _expand_exclude(items: list[str]) -> list[str]:
+    expanded = list(items)
+    for item in items:
+        for syn in _SYNONYMS.get(item, []):
+            if syn not in expanded:
+                expanded.append(syn)
+    return expanded
+
+
 def _build_search_terms(normalized: str, clean_name: str) -> list[str]:
     tokens = [t for t in clean_name.split() if t] or [normalized]
     terms = []
@@ -332,6 +353,7 @@ def get_menu_info(name: str) -> str:
 
 
 def search_menu_logic(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], max_spicy: int = None, min_spicy: int = None):
+    exclude = _expand_exclude(exclude) if exclude else []
 
     def build_spicy_clause():
         clauses, params = [], []
@@ -344,8 +366,15 @@ def search_menu_logic(query: str = "", category: str = None, badge: str = None, 
     def format_row(name, price, description, allergy):
         return f"메뉴명: {name}\n        가격: {price}원\n        설명: {description}\n        알레르기: {allergy}"
 
-    def allergy_ok(allergy):
-        return not exclude or not any(item in (allergy or "") for item in exclude)
+    def allergy_ok(allergy, content=""):
+        if not exclude:
+            return True
+        return not any(item in (allergy or "") or item in content for item in exclude)
+
+    # exclude 재료가 query에 포함되면 SQL 경로로 강제 전환 (query와 exclude 충돌 방지)
+    if exclude and query:
+        if any(item in query for item in exclude):
+            query = ""
 
     # SQL 경로: query 없이 category/badge/exclude 조합
     if not query:
@@ -364,17 +393,22 @@ def search_menu_logic(query: str = "", category: str = None, badge: str = None, 
             for n in exclude_names:
                 conditions.append("REPLACE_SPACE(name) NOT LIKE ?")
                 params.append(f"%{n.replace(' ', '')}%")
+        if exclude:
+            for item in exclude:
+                conditions.append("(allergy NOT LIKE ? AND description NOT LIKE ?)")
+                params.extend([f"%{item}%", f"%{item}%"])
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else "WHERE 1=1"
-        limit = 3 if (category or badge) else 20
+        limit = 3 if (category or badge) and not exclude else 20
+        badge_order = "CASE WHEN badge LIKE '%BEST%' THEN 0 WHEN badge LIKE '%NEW%' THEN 1 ELSE 2 END ASC"
         cur.execute(
-            f"SELECT name, price, description, allergy FROM menu {where} {spicy_clause} LIMIT ? OFFSET ?",
+            f"SELECT name, price, description, allergy FROM menu {where} {spicy_clause} ORDER BY {badge_order} LIMIT ? OFFSET ?",
             params + spicy_params + [limit, offset]
         )
         rows = cur.fetchall()
         conn.close()
 
-        results = [(format_row(*r), 0.0) for r in rows if allergy_ok(r[3])]
+        results = [(format_row(*r), 0.0) for r in rows]
         return results[:3]
 
     # 벡터 검색 경로: query 있을 때
@@ -382,14 +416,13 @@ def search_menu_logic(query: str = "", category: str = None, badge: str = None, 
     chroma_filters = []
     if category:
         chroma_filters.append({"category": {"$eq": category}})
-    if badge:
-        chroma_filters.append({"badge": {"$eq": badge}})
-    filters = {"$and": chroma_filters} if len(chroma_filters) > 1 else (chroma_filters[0] if chroma_filters else None)
+    filters = chroma_filters[0] if chroma_filters else None
 
     spicy_active = max_spicy is not None or min_spicy is not None
-    k = 15 if spicy_active else 5
+    exclude_active = bool(exclude)
+    k = 10 if (spicy_active or exclude_active) else 5
 
-    results = get_chroma_db().similarity_search_with_score(query, k=k, filter=filters)
+    results = get_chroma_db().similarity_search_with_score(query, k=k + offset, filter=filters)
 
     def spicy_ok(doc):
         level = doc.metadata.get("spicy_level")
@@ -399,14 +432,18 @@ def search_menu_logic(query: str = "", category: str = None, badge: str = None, 
             return False
         return True
 
-    use_threshold = not category and not badge and not spicy_active
+    def badge_ok(doc):
+        return not badge or badge in doc.metadata.get("badge", "")
+
+    use_threshold = not category and not badge and not spicy_active and not exclude_active
     merged = [
         (doc, score) for doc, score in results
         if (not use_threshold or score < 0.7)
-        and allergy_ok(doc.metadata.get("allergy", ""))
+        and allergy_ok(doc.metadata.get("allergy", ""), doc.page_content)
         and spicy_ok(doc)
+        and badge_ok(doc)
     ]
-    return [(doc.page_content, round(score, 4)) for doc, score in merged[:3]]
+    return [(doc.page_content, round(score, 4)) for doc, score in merged[offset:offset + 3]]
 
 
 @tool
@@ -422,7 +459,8 @@ def search_menu(query: str = "", category: str = None, badge: str = None, exclud
     - badge: 손님이 아래 키워드를 언급할 때 해당 값으로 설정. 언급 없으면 None.
       NEW=신메뉴/새로나온, BEST=베스트/대표메뉴/인기, 비건=비건/채식,
       추천=추천, 재주문1위=재주문1위/또먹고싶은, 카페인=카페인없는/디카페인
-    - exclude: 제외할 알레르기 재료 목록.
+    - exclude: 제외할 재료 목록. 알레르기뿐 아니라 "~없는/~안 들어간/~빼고" 같은 재료 제외 요청에도 사용하라.
+      예) "새우 알레르기 있어요" → ["새우"] / "마요네즈 없는 버거" → exclude=["마요네즈"], query=""
     - exclude_names: 제외할 메뉴명 목록. query에 "제외/말고" 넣지 말고 이 파라미터 사용.
     - offset: 이미 보여준 메뉴 수. "다른 거/더 있어?" → 직전 offset+3.
     - max_spicy / min_spicy: 매운맛 범위 필터. spicy_level 기준(0=안매움, 1=약간, 2=보통, 3=매움, 10=극매움).
