@@ -18,7 +18,6 @@ from pathlib import Path
 import numpy as np
 from fastapi import APIRouter, File, Query, UploadFile, WebSocket, WebSocketDisconnect
 
-from app.refine import refine_stt
 from app.agent import chat
 from voice.stt import load_model, transcribe, transcribe_array
 from voice.tts import synthesize
@@ -38,8 +37,12 @@ MIN_SPEECH_CHUNKS = 6
 _model = None
 
 
-def split_response(text: str) -> tuple[str, str | list, str]:
-    """에이전트 응답에서 [ACTION], [SCREEN] 태그를 파싱해 음성/화면/액션을 분리"""
+def split_response(text: str) -> tuple[str, str | list, str, str]:
+    """에이전트 응답에서 [REFINED], [ACTION], [SCREEN] 태그를 파싱해 분리"""
+    refined_match = re.search(r'\[REFINED\](.*?)\[/REFINED\]', text, re.DOTALL)
+    refined = refined_match.group(1).strip() if refined_match else ""
+    text = re.sub(r'\[REFINED\].*?\[/REFINED\]', '', text, flags=re.DOTALL)
+
     action_match = re.search(r'\[ACTION\](.*?)\[/ACTION\]', text, re.DOTALL)
     action = action_match.group(1).strip() if action_match else "NONE"
     text = re.sub(r'\[ACTION\].*?\[/ACTION\]', '', text, flags=re.DOTALL)
@@ -58,7 +61,7 @@ def split_response(text: str) -> tuple[str, str | list, str]:
             items.append({"name": row["name"], "price": row["price"], "img_url": row["img_url"]})
 
     screen = items if items else screen_text
-    return voice, screen, action
+    return voice, screen, action, refined
 
 
 def get_model():
@@ -144,15 +147,13 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
             if not stt_text.strip():
                 return
             last_activity_time = time.time()  # ← 발화 감지 시 갱신
-            refined_text = await asyncio.to_thread(refine_stt, stt_text.strip())
 
             # 욕설 필터링 (1차 필터링과 동일한 함수 재사용)
             from api.main import contains_blocked_keyword
-            if contains_blocked_keyword(refined_text):
+            if contains_blocked_keyword(stt_text.strip()):
                 await websocket.send_text(
                     json.dumps({
                         "stt_text": stt_text.strip(),
-                        "refined_text": refined_text,
                         "voice": "부적절한 표현이 포함되어 있습니다.",
                         "screen": "",
                         "action": "NONE",
@@ -160,12 +161,12 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                 )
                 return
 
-            response = await asyncio.to_thread(chat, refined_text, session_id)
-            voice, screen, action = split_response(response)
+            response = await asyncio.to_thread(chat, stt_text.strip(), session_id)
+            voice, screen, action, refined = split_response(response)
             await websocket.send_text(
                 json.dumps({
                     "stt_text": stt_text.strip(),
-                    "refined_text": refined_text,
+                    "refined_text": refined or stt_text.strip(),
                     "voice": voice,
                     "screen": screen,
                     "action": action,
@@ -190,7 +191,6 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                     await websocket.send_text(
                         json.dumps({
                             "stt_text": "",
-                            "refined_text": "",
                             "voice": "일정 시간 동안 이용이 없어 초기화되었습니다.",
                             "screen": "",
                             "action": "TIMEOUT",
@@ -246,7 +246,7 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                         in_speech = False
                         pre_roll.clear()
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         from db.sqlite import clear_cart
         from app.agent import clear_history
         clear_cart(session_id)

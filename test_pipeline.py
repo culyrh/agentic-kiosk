@@ -121,10 +121,17 @@ async def main(session_id: str = "test", play_audio_flag: bool = False):
                     # text frame = JSON 응답
                     data = json.loads(msg)
                     print(f"[STT]  {data['stt_text']}")
-                    print(f"[정제] {data['refined_text']}")
+                    print(f"[정제] {data.get('refined_text', '')}")
                     print(f"[음성] {data['voice']}")
-                    if data['screen']:
-                        print(f"[화면] {data['screen']}")
+                    screen = data.get('screen')
+                    if screen:
+                        if isinstance(screen, list):
+                            for item in screen:
+                                print(f"[화면] {item['name']} | {item['price']}원 | {item.get('img_url', '')}")
+                        else:
+                            print(f"[화면] {screen}")
+                    if data.get('action'):
+                        print(f"[액션] {data['action']}")
                     print()
 
         send_task = asyncio.create_task(send_audio())
