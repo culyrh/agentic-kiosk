@@ -189,6 +189,7 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 |------|------|------|
 | `search_menu` | menu_tools.py | RAG 기반 메뉴 검색 |
 | `get_menu_by_price` | menu_tools.py | 가격 기준 메뉴 조회 (최저/최고/예산 범위) |
+| `get_menu_by_nutrition` | menu_tools.py | 영양소(칼로리/당류/단백질) 기준 정렬 조회 |
 | `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
 | `get_set_info` | menu_tools.py | 세트 메뉴 정보 + 옵션 목록 |
 | `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |

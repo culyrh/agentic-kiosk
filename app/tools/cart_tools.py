@@ -178,7 +178,7 @@ def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list = []
     conn.commit()
     conn.close()
 
-    return f"{actual_name} {quantity}개를 장바구니에 추가했습니다."
+    return f"{actual_name} {quantity}개를 장바구니에 추가했습니다. (menu_id:{menu_id})"
 
 
 @tool
