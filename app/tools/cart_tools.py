@@ -102,9 +102,9 @@ def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list = []
                 if rows:
                     break
 
-            # 단축으로도 안 되면 토큰 통째로 제거 (3개 이상일 때)
+            # 단축으로도 안 되면 토큰 통째로 제거 (3개 이상일 때, 뒤 토큰부터 제거)
             if not rows and len(tokens) > 2:
-                for skip_idx in range(len(tokens)):
+                for skip_idx in range(len(tokens) - 1, -1, -1):
                     subset = [t for i, t in enumerate(tokens) if i != skip_idx]
                     and_conditions = " AND ".join(["REPLACE_SPACE(name) LIKE ?" for _ in subset])
                     cur.execute(
@@ -501,9 +501,9 @@ def upgrade_to_set(burger_name: str, drink_option: str, side_option: str) -> str
     # 1차: 전체 토큰 AND 검색
     row = search_cart_set(tokens)
 
-    # 2차: 토큰 하나씩 제거하며 재시도
+    # 2차: 토큰 하나씩 제거하며 재시도 (뒤 토큰부터 — 카테고리어가 보통 뒤에 옴)
     if not row and len(tokens) > 1:
-        for skip_idx in range(len(tokens)):
+        for skip_idx in range(len(tokens) - 1, -1, -1):
             subset = [t for i, t in enumerate(tokens) if i != skip_idx]
             row = search_cart_set(subset)
             if row:

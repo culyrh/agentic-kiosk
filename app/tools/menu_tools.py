@@ -126,6 +126,67 @@ def get_set_info(burger_name: str) -> str:
 
 
 @tool
+def get_menu_by_nutrition(sort_by: str, order: str = "asc", category: str = None, limit: int = 3) -> str:
+    """영양소 기준으로 메뉴를 정렬해 조회한다.
+    영양소 수치로 순위를 매길 때 사용하라. search_menu의 필터와 달리 정렬이 필요할 때 사용하라.
+
+    sort_by: 정렬 기준 영양소. calories=칼로리, sugar=당류, protein=단백질.
+    order: asc=낮은순, desc=높은순.
+    category: 버거/디저트/치킨/음료/아이스샷 중 하나. 전체 메뉴면 None.
+    limit: 반환할 메뉴 수 (기본 3개).
+    예) "칼로리 낮은 메뉴" → sort_by="calories", order="asc"
+        "제일 당 낮은 아이스크림" → sort_by="sugar", order="asc", category="아이스샷"
+        "단백질 높은 버거" → sort_by="protein", order="desc", category="버거"
+        "당뇨에 좋은/혈당 관리/저당 버거" → sort_by="sugar", order="asc", category="버거"
+        "다이어트/칼로리 걱정/살찔까봐" → sort_by="calories", order="asc"
+        "고단백/운동 후/헬스 식단" → sort_by="protein", order="desc"
+    """
+    import json as _json
+
+    KEY_MAP = {"calories": "열량", "sugar": "당류", "protein": "단백질"}
+    prefix = KEY_MAP.get(sort_by)
+    if not prefix:
+        return f"sort_by는 calories / sugar / protein 중 하나여야 합니다."
+
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+
+    if category:
+        cur.execute("SELECT name, price, description, nutrition FROM menu WHERE category = ?", (category,))
+    else:
+        cur.execute("SELECT name, price, description, nutrition FROM menu")
+    rows = cur.fetchall()
+    conn.close()
+
+    def parse_value(nutrition_str):
+        if not nutrition_str:
+            return -1
+        d = _json.loads(nutrition_str)
+        for k, v in d.items():
+            if k.startswith(prefix):
+                import re as _re
+                m = _re.search(r'\d+', str(v).replace(",", ""))
+                return int(m.group()) if m else -1
+        return -1
+
+    scored = [(name, price, desc, parse_value(nut)) for name, price, desc, nut in rows]
+    # 데이터 없는 항목(-1) 제외
+    scored = [(n, p, d, v) for n, p, d, v in scored if v >= 0]
+
+    if not scored:
+        return "해당 조건에 맞는 영양 정보가 없습니다."
+
+    scored.sort(key=lambda x: x[3], reverse=(order == "desc"))
+
+    unit = {"calories": "kcal", "sugar": "g", "protein": "g"}.get(sort_by, "")
+    lines = [
+        f"메뉴명: {n}, 가격: {p}원, {sort_by}: {v}{unit}, 설명: {d}"
+        for n, p, d, v in scored[:limit]
+    ]
+    return "\n".join(lines)
+
+
+@tool
 def get_menu_by_price(category: str = None, order: str = "asc", limit: int = 5, max_price: int = None, min_price: int = None) -> str:
     """가격 기준으로 메뉴를 조회한다. 가장 비싸거나 저렴한 메뉴, 또는 예산 내 메뉴를 찾을 때 사용하라.
 
@@ -149,7 +210,7 @@ def get_menu_by_price(category: str = None, order: str = "asc", limit: int = 5, 
     params = []
 
     if category:
-        conditions[0] = "category = ?"
+        conditions.append("category = ?")
         params.append(category)
     if max_price is not None:
         conditions.append(f"{price_expr} <= ?")
@@ -220,6 +281,19 @@ def get_menu_info(name: str) -> str:
                         rows.append(row)
                         existing_ids.add(row[0])
 
+        # 2.5차: 뒤 토큰부터 제거하며 AND 재시도 (3개 이상일 때)
+        if not rows and len(tokens) > 2:
+            for skip_idx in range(len(tokens) - 1, -1, -1):
+                subset = [t for i, t in enumerate(tokens) if i != skip_idx]
+                and_conditions = " AND ".join(["REPLACE_SPACE(name) LIKE ?" for _ in subset])
+                cur.execute(
+                    f"SELECT name, price, description, allergy, origin, nutrition FROM menu WHERE {and_conditions}",
+                    [f"%{t}%" for t in subset]
+                )
+                rows = cur.fetchall()
+                if rows:
+                    break
+
         # 3차: 접두어 단계별 수집
         if not rows:
             terms = _build_search_terms(normalized, clean_name)
@@ -257,115 +331,65 @@ def get_menu_info(name: str) -> str:
     return "\n".join(result_lines)
 
 
-def search_menu_logic(query: str="", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], max_spicy: int = None, min_spicy: int = None):
+def search_menu_logic(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], max_spicy: int = None, min_spicy: int = None):
 
-    # 쿼리·카테고리·배지 없이 exclude만 있으면 SQL로 전체 메뉴 조회 후 알레르기 필터
-    if not query and not category and not badge and exclude:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        spicy_clauses = []
-        spicy_params = []
+    def build_spicy_clause():
+        clauses, params = [], []
         if max_spicy is not None:
-            spicy_clauses.append("spicy_level <= ?")
-            spicy_params.append(max_spicy)
+            clauses.append("spicy_level <= ?"); params.append(max_spicy)
         if min_spicy is not None:
-            spicy_clauses.append("spicy_level >= ?")
-            spicy_params.append(min_spicy)
-        spicy_clause = ("AND " + " AND ".join(spicy_clauses)) if spicy_clauses else ""
-        cur.execute(
-            f"SELECT name, price, description, allergy FROM menu WHERE 1=1 {spicy_clause} LIMIT 20 OFFSET ?",
-            spicy_params + [offset]
-        )
-        rows = cur.fetchall()
-        conn.close()
+            clauses.append("spicy_level >= ?"); params.append(min_spicy)
+        return ("AND " + " AND ".join(clauses)) if clauses else "", params
 
-        results = []
-        for name, price, description, allergy in rows:
-            if any(item in (allergy or "") for item in exclude):
-                continue
-            if exclude_names and any(en in name for en in exclude_names):
-                continue
-            content = f"메뉴명: {name}\n        가격: {price}원\n        설명: {description}\n        알레르기: {allergy}"
-            results.append((content, 0.0))
-        return results[:3]
+    def format_row(name, price, description, allergy):
+        return f"메뉴명: {name}\n        가격: {price}원\n        설명: {description}\n        알레르기: {allergy}"
 
-    # 카테고리 또는 배지만 지정된 경우 SQL로 페이지네이션 조회
-    if (category or badge) and not query:
+    def allergy_ok(allergy):
+        return not exclude or not any(item in (allergy or "") for item in exclude)
+
+    # SQL 경로: query 없이 category/badge/exclude 조합
+    if not query:
         conn = sqlite3.connect(DB_PATH)
         conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
         cur = conn.cursor()
 
-        spicy_clauses = []
-        spicy_params = []
-        if max_spicy is not None:
-            spicy_clauses.append("spicy_level <= ?")
-            spicy_params.append(max_spicy)
-        if min_spicy is not None:
-            spicy_clauses.append("spicy_level >= ?")
-            spicy_params.append(min_spicy)
-        spicy_clause = ("AND " + " AND ".join(spicy_clauses)) if spicy_clauses else ""
+        spicy_clause, spicy_params = build_spicy_clause()
+        conditions, params = [], []
 
-        base_conditions = []
-        base_params = []
         if category:
-            base_conditions.append("category = ?")
-            base_params.append(category)
+            conditions.append("category = ?"); params.append(category)
         if badge:
-            base_conditions.append("badge LIKE ?")
-            base_params.append(f"%{badge}%")
-        base_clause = " AND ".join(base_conditions)
-
+            conditions.append("badge LIKE ?"); params.append(f"%{badge}%")
         if exclude_names:
-            excl_conditions = " AND ".join(["REPLACE_SPACE(name) NOT LIKE ?" for _ in exclude_names])
-            excl_params = [f"%{n.replace(' ', '')}%" for n in exclude_names]
-            cur.execute(
-                f"SELECT name, price, description, allergy FROM menu WHERE {base_clause} AND {excl_conditions} {spicy_clause} LIMIT 3 OFFSET ?",
-                base_params + excl_params + spicy_params + [offset]
-            )
-        else:
-            cur.execute(
-                f"SELECT name, price, description, allergy FROM menu WHERE {base_clause} {spicy_clause} LIMIT 3 OFFSET ?",
-                base_params + spicy_params + [offset]
-            )
+            for n in exclude_names:
+                conditions.append("REPLACE_SPACE(name) NOT LIKE ?")
+                params.append(f"%{n.replace(' ', '')}%")
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else "WHERE 1=1"
+        limit = 3 if (category or badge) else 20
+        cur.execute(
+            f"SELECT name, price, description, allergy FROM menu {where} {spicy_clause} LIMIT ? OFFSET ?",
+            params + spicy_params + [limit, offset]
+        )
         rows = cur.fetchall()
         conn.close()
 
-        results = []
-        for name, price, description, allergy in rows:
-            if exclude and any(item in (allergy or "") for item in exclude):
-                continue
-            content = f"메뉴명: {name}\n        가격: {price}원\n        설명: {description}\n        알레르기: {allergy}"
-            results.append((content, 0.0))
-        return results
+        results = [(format_row(*r), 0.0) for r in rows if allergy_ok(r[3])]
+        return results[:3]
 
-    # 그 외: 벡터 검색
-    # spicy_level은 NULL이 많아 ChromaDB 필터가 해당 문서를 통째로 제외함 → 후처리로 대신 필터링
-    conditions = []
+    # 벡터 검색 경로: query 있을 때
+    # spicy_level은 NULL이 많아 ChromaDB where 필터가 문서를 통째로 제외함 → 후처리로 필터링
+    chroma_filters = []
     if category:
-        conditions.append({"category": {"$eq": category}})
+        chroma_filters.append({"category": {"$eq": category}})
     if badge:
-        conditions.append({"badge": {"$eq": badge}})
+        chroma_filters.append({"badge": {"$eq": badge}})
+    filters = {"$and": chroma_filters} if len(chroma_filters) > 1 else (chroma_filters[0] if chroma_filters else None)
 
-    if len(conditions) > 1:
-        filters = {"$and": conditions}
-    elif len(conditions) == 1:
-        filters = conditions[0]
-    else:
-        filters = None
+    spicy_active = max_spicy is not None or min_spicy is not None
+    k = 15 if spicy_active else 5
 
-    # spicy 필터가 있으면 더 많이 가져와서 후처리
-    k = 15 if (max_spicy is not None or min_spicy is not None) else 5
-
-    db = get_chroma_db()
-    results = db.similarity_search_with_score(
-        query,
-        k=k,
-        filter=filters,
-    )
-
-    def is_excluded(doc):
-        allergy = doc.metadata.get("allergy", "")
-        return any(item in allergy for item in exclude)
+    results = get_chroma_db().similarity_search_with_score(query, k=k, filter=filters)
 
     def spicy_ok(doc):
         level = doc.metadata.get("spicy_level")
@@ -375,14 +399,13 @@ def search_menu_logic(query: str="", category: str = None, badge: str = None, ex
             return False
         return True
 
-    # spicy 필터가 활성화되면 threshold를 완화 (유사도보다 spicy 조건이 우선)
-    spicy_active = max_spicy is not None or min_spicy is not None
-    use_threshold = (category is None and badge is None) and not spicy_active
+    use_threshold = not category and not badge and not spicy_active
     merged = [
         (doc, score) for doc, score in results
-        if (not use_threshold or score < 0.7) and not is_excluded(doc) and spicy_ok(doc)
+        if (not use_threshold or score < 0.7)
+        and allergy_ok(doc.metadata.get("allergy", ""))
+        and spicy_ok(doc)
     ]
-
     return [(doc.page_content, round(score, 4)) for doc, score in merged[:3]]
 
 
@@ -409,6 +432,7 @@ def search_menu(query: str = "", category: str = None, badge: str = None, exclud
       "매운 거 추천" → min_spicy=2
       "아주 매운 거/극매운" → min_spicy=3
       언급 없으면 둘 다 None.
+    영양소 기준 검색(칼로리/당류/단백질)은 get_menu_by_nutrition을 사용하라.
     """
     results = search_menu_logic(query, category, badge, exclude, offset, exclude_names, max_spicy, min_spicy)
 
