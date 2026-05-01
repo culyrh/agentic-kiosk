@@ -84,6 +84,11 @@ def chat(user_input: str, session_id: str = "default") -> str:
     return final_response
 
 
+def clear_history(session_id: str) -> None:
+    """세션 히스토리 초기화 (손님이 키오스크를 떠날 때 호출)"""
+    if session_id in conversation_history:
+        conversation_history[session_id].clear()
+
 if __name__ == "__main__":
     print("리아버거 주문 도우미입니다. 종료하려면 'q'를 입력하세요.\n")
     
