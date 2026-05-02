@@ -60,7 +60,7 @@ def split_response(text: str) -> tuple[str, str | list, str, str]:
         if row:
             items.append({"name": row["name"], "price": row["price"], "img_url": row["img_url"]})
 
-    screen = items if items else screen_text
+    screen = items if items else [line for line in screen_text.splitlines() if line.strip()]
     return voice, screen, action, refined
 
 
