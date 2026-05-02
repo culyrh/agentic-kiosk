@@ -66,9 +66,9 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 - confirm_order 완료 후 → [ACTION]PAGE:start[/ACTION]
 - 장바구니를 전부 비운 후 → [ACTION]PAGE:home[/ACTION]
 - 카테고리가 명확한 메뉴 검색 결과를 보여줄 때 → [ACTION]TAB:{카테고리명}[/ACTION] (카테고리명: 버거/디저트/치킨/음료/아이스샷 중 하나)
-- 여러 메뉴 후보 중 선택을 요청할 때 → [ACTION]TYPE_SELECT[/ACTION]
-- 세트 음료 선택을 요청할 때 → [ACTION]DRINK_SELECT:{버거_menu_id}[/ACTION] (버거_menu_id: add_to_cart 결과에서 확인)
-- 세트 사이드 선택을 요청할 때 → [ACTION]SIDE_SELECT:{버거_menu_id}[/ACTION]
+- 여러 메뉴 후보 중 선택을 요청할 때 → [SCREEN]에 메뉴 목록을 넣고 [ACTION]TYPE_SELECT[/ACTION]를 함께 써라.
+- 세트 음료 선택을 요청할 때 → [SCREEN] 태그 없이 [ACTION]DRINK_SELECT:{버거_menu_id}[/ACTION]만 써라. (버거_menu_id: add_to_cart 결과에서 확인)
+- 세트 사이드 선택을 요청할 때 → [SCREEN] 태그 없이 [ACTION]SIDE_SELECT:{버거_menu_id}[/ACTION]만 써라.
 - 그 외 모든 응답 → [ACTION]NONE[/ACTION]"""
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
