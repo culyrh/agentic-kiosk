@@ -16,7 +16,9 @@ from collections import deque
 from pathlib import Path
 
 import numpy as np
+import torch
 from fastapi import APIRouter, File, Query, UploadFile, WebSocket, WebSocketDisconnect
+from silero_vad import load_silero_vad
 
 from app.agent import chat
 from voice.stt import load_model, transcribe, transcribe_array
@@ -27,12 +29,14 @@ router = APIRouter(prefix="/stt", tags=["stt"])
 
 SUPPORTED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".flac"}
 
-# VAD 파라미터 (stt_realtime.py와 동일)
+# VAD 파라미터
 SAMPLE_RATE = 16000
-ENERGY_THRESHOLD = 0.005
+VAD_THRESHOLD = 0.5       # Silero VAD 음성 판정 확률 임계값
 SPEECH_PAD_CHUNKS = 4
 SILENCE_CHUNKS = 16
 MIN_SPEECH_CHUNKS = 6
+
+_vad_model = None
 
 _model = None
 
@@ -71,8 +75,19 @@ def get_model():
     return _model
 
 
-def rms(chunk: np.ndarray) -> float:
-    return float(np.sqrt(np.mean(chunk ** 2)))
+def get_vad_model():
+    global _vad_model
+    if _vad_model is None:
+        _vad_model = load_silero_vad()
+    return _vad_model
+
+
+def is_speech(chunk: np.ndarray) -> bool:
+    # Silero VAD는 512샘플(32ms) 단위 입력을 요구 → 청크 앞부분 512샘플만 사용
+    audio = torch.from_numpy(chunk[:512].copy())
+    with torch.no_grad():
+        prob = get_vad_model()(audio, SAMPLE_RATE).item()
+    return prob > VAD_THRESHOLD
 
 
 # ── REST ──────────────────────────────────────────────────────
@@ -124,6 +139,8 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
     """
     await websocket.accept()
     model = get_model()
+    vad = get_vad_model()
+    vad.reset_states()  # 세션마다 Silero 내부 상태 초기화
 
     # VAD 상태 변수
     pre_roll: deque[np.ndarray] = deque(maxlen=SPEECH_PAD_CHUNKS)  # 발화 시작 직전 청크 버퍼

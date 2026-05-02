@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from api.routes.menu import router as menu_router
-from api.routes.stt import get_model, router as stt_router
+from api.routes.stt import get_model, get_vad_model, router as stt_router
 from app.rag.chroma import get_chroma_db
 from api.routes.cart import router as cart_router
 from api.routes.order import router as order_router
@@ -34,8 +34,9 @@ def contains_blocked_keyword(text: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    get_model()      # 서버 시작 시 Whisper 모델 미리 로드
-    get_chroma_db()  # 서버 시작 시 ChromaDB 임베딩 모델 미리 로드
+    get_model()       # 서버 시작 시 Whisper 모델 미리 로드
+    get_vad_model()   # 서버 시작 시 Silero VAD 모델 미리 로드
+    get_chroma_db()   # 서버 시작 시 ChromaDB 임베딩 모델 미리 로드
     yield
 
 
