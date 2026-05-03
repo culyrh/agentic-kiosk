@@ -153,9 +153,17 @@ def get_set_by_id(set_id: int):
 def get_cart(session_id: str):
     conn = get_connection()
     rows = conn.execute("""
-        SELECT c.*, m.name, m.img_url
+        SELECT c.*, m.name, m.img_url,
+               dm.name as drink_name,
+               do.extra_price as drink_extra_price,
+               sm.name as side_name,
+               so.extra_price as side_extra_price
         FROM cart c
         JOIN menu m ON c.menu_id = m.id
+        LEFT JOIN options do ON c.drink_option = do.option_id
+        LEFT JOIN menu dm ON do.menu_id = dm.id
+        LEFT JOIN options so ON c.side_option = so.option_id
+        LEFT JOIN menu sm ON so.menu_id = sm.id
         WHERE c.session_id = ?
     """, (session_id,)).fetchall()
     conn.close()
