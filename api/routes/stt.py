@@ -21,7 +21,6 @@ from fastapi import APIRouter, File, Query, UploadFile, WebSocket, WebSocketDisc
 from app.agent import chat
 from voice.stt import load_model, transcribe, transcribe_array
 from voice.tts import synthesize
-from db.sqlite import get_menu_by_name
 
 router = APIRouter(prefix="/stt", tags=["stt"])
 
@@ -37,7 +36,7 @@ MIN_SPEECH_CHUNKS = 6
 _model = None
 
 
-def split_response(text: str) -> tuple[str, str | list, str, str]:
+def split_response(text: str) -> tuple[str, str, str, str]:
     """에이전트 응답에서 [REFINED], [ACTION], [SCREEN] 태그를 파싱해 분리"""
     refined_match = re.search(r'\[REFINED\](.*?)\[/REFINED\]', text, re.DOTALL)
     refined = refined_match.group(1).strip() if refined_match else ""
@@ -47,20 +46,10 @@ def split_response(text: str) -> tuple[str, str | list, str, str]:
     action = action_match.group(1).strip() if action_match else "NONE"
     text = re.sub(r'\[ACTION\].*?\[/ACTION\]', '', text, flags=re.DOTALL)
 
-    screen_matches = re.findall(r'\[SCREEN\](.*?)\[/SCREEN\]', text, re.DOTALL)
+    screen_match = re.search(r'\[SCREEN\](.*?)\[/SCREEN\]', text, re.DOTALL)
+    screen = screen_match.group(1).strip() if screen_match else ""
     voice = re.sub(r'\[SCREEN\].*?\[/SCREEN\]', '', text, flags=re.DOTALL).strip()
-    screen_text = screen_matches[0].strip() if screen_matches else ""
 
-    items = []
-    for line in screen_text.splitlines():
-        name = re.sub(r'\s*\(.*?\)\s*$', '', line.lstrip('-•0123456789. ').strip())
-        if not name:
-            continue
-        row = get_menu_by_name(name)
-        if row:
-            items.append({"name": row["name"], "price": row["price"], "img_url": row["img_url"]})
-
-    screen = items if items else [line for line in screen_text.splitlines() if line.strip()]
     return voice, screen, action, refined
 
 
