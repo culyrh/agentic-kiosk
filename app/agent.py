@@ -44,7 +44,7 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
   - 손님이 "세트"를 선택하면 [ACTION]DRINK_SELECT:{버거_menu_id}[/ACTION]로 음료 선택 화면을 보여줘라. (버거_menu_id: get_set_info 반환값 첫 줄의 "버거 menu_id: 숫자"에서 그 숫자만 사용. 예: DRINK_SELECT:107)
 - 음료 선택 후 [ACTION]SIDE_SELECT:{버거_menu_id}[/ACTION]로 사이드 선택 화면을 보여줘라. (동일한 숫자 ID 사용)
 - 사이드 선택 완료 후 "주문 내역을 확인해주세요. 담으시겠습니까?" 안내와 함께 [ACTION]CART_ADD[/ACTION]를 써라.
-- 손님이 CART_ADD를 확인("응", "네", "담아줘" 등)하면 그때 add_to_cart를 호출하라 (세트면 upgrade_to_set도 함께). 완료 후 [ACTION]NONE[/ACTION]을 써라.
+- 손님이 CART_ADD를 확인("응", "네", "담아줘" 등)하면 반드시 add_to_cart를 먼저 호출하고 결과를 확인한 뒤, 세트인 경우에만 upgrade_to_set을 별도로 호출하라. 두 툴을 동시에 호출하지 마라. 완료 후 [ACTION]NONE[/ACTION]을 써라.
 - 손님이 CART_ADD를 취소하면 add_to_cart를 호출하지 말고 [ACTION]NONE[/ACTION]을 써라.
 - 새 메뉴 주문이 오면 이전 세트 선택 흐름을 이어받지 마라. 새 메뉴에 대해 처음부터 독립적으로 확인하라.
 - "없어", "괜찮아", "됐어", "아니" 등 추가 주문이 없다는 표현은 결제 요청이 아니다. "주문을 완료하시겠어요?"라고 물어봐라.
