@@ -140,6 +140,7 @@ def get_set_info(burger_name: str) -> str:
     conn.close()
 
     return (
+        f"버거 menu_id: {burger_id}\n"
         f"{burger_name_actual} 세트: {set_price:,}원 (단품 {burger_price:,}원, +{set_price - burger_price:,}원)\n"
         f"음료 선택: {', '.join(drinks)}\n"
         f"사이드 선택: {', '.join(sides)}"
