@@ -39,8 +39,8 @@ Base URL: `http://127.0.0.1:8000`
 
 | 카테고리 | 메서드 | 엔드포인트 | 설명 | 입력 | 출력 | 예외처리 / 정책 |
 |----------|--------|-----------|------|------|------|----------------|
-| cart | GET | /cart/{session_id} | 장바구니 조회 | path: `session_id` | `{"items": [{cart_id, menu_id, name, img_url, is_set, drink_option, side_option, quantity, unit_price}], "total": 0}` | 비어있으면 items=[] |
-| cart | POST | /cart | 장바구니 담기 | body: `{session_id, menu_id, is_set, drink_option, side_option, quantity, unit_price}` | `{"cart_id": 1, "message": "장바구니에 담겼습니다."}` | 없는 menu_id → 404 / quantity < 1 → 400 / unit_price 미입력 시 DB에서 자동 설정 |
+| cart | GET | /cart/{session_id} | 장바구니 조회 | path: `session_id` | `{"items": [{cart_id, menu_id, name, img_url, is_set, drink_option, drink_name, drink_extra_price, side_option, side_name, side_extra_price, quantity, unit_price}], "total": 0}` | 비어있으면 items=[] |
+| cart | POST | /cart | 장바구니 담기 | body: `{session_id, menu_id, is_set, drink_option, side_option, quantity, unit_price}` | `{"cart_id": 1, "message": "장바구니에 담겼습니다."}` | 없는 menu_id → 404 / quantity < 1 → 400 / unit_price 미입력 시 DB에서 자동 설정 / 동일 메뉴 담기 시 수량 증가 |
 | cart | PUT | /cart/{cart_id} | 수량 직접 수정 | path: `cart_id`, body: `{quantity}` | `{"message": "수량이 수정됐습니다."}` | quantity < 1 → 400 |
 | cart | PATCH | /cart/{cart_id}/increase | 수량 +1 | path: `cart_id` | `{"message": "수량이 증가됐습니다."}` | - |
 | cart | PATCH | /cart/{cart_id}/decrease | 수량 -1 | path: `cart_id` | `{"message": "수량이 감소됐습니다."}` | 수량 1이면 자동 삭제 |

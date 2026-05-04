@@ -18,7 +18,6 @@ from pathlib import Path
 import numpy as np
 from fastapi import APIRouter, File, Query, UploadFile, WebSocket, WebSocketDisconnect
 
-from app.refine import refine_stt
 from app.agent import chat
 from voice.stt import load_model, transcribe, transcribe_array
 from voice.tts import synthesize
@@ -27,7 +26,7 @@ router = APIRouter(prefix="/stt", tags=["stt"])
 
 SUPPORTED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".flac"}
 
-# VAD 파라미터 (stt_realtime.py와 동일)
+# VAD 파라미터
 SAMPLE_RATE = 16000
 ENERGY_THRESHOLD = 0.005
 SPEECH_PAD_CHUNKS = 4
@@ -37,12 +36,21 @@ MIN_SPEECH_CHUNKS = 6
 _model = None
 
 
-def split_response(text: str) -> tuple[str, str]:
-    """에이전트 응답에서 [SCREEN]...[/SCREEN] 태그를 파싱해 음성/화면 내용을 분리"""
-    screen_matches = re.findall(r'\[SCREEN\](.*?)\[/SCREEN\]', text, re.DOTALL)
+def split_response(text: str) -> tuple[str, str, str, str]:
+    """에이전트 응답에서 [REFINED], [ACTION], [SCREEN] 태그를 파싱해 분리"""
+    refined_match = re.search(r'\[REFINED\](.*?)\[/REFINED\]', text, re.DOTALL)
+    refined = refined_match.group(1).strip() if refined_match else ""
+    text = re.sub(r'\[REFINED\].*?\[/REFINED\]', '', text, flags=re.DOTALL)
+
+    action_match = re.search(r'\[ACTION\](.*?)\[/ACTION\]', text, re.DOTALL)
+    action = action_match.group(1).strip() if action_match else "NONE"
+    text = re.sub(r'\[ACTION\].*?\[/ACTION\]', '', text, flags=re.DOTALL)
+
+    screen_match = re.search(r'\[SCREEN\](.*?)\[/SCREEN\]', text, re.DOTALL)
+    screen = screen_match.group(1).strip() if screen_match else ""
     voice = re.sub(r'\[SCREEN\].*?\[/SCREEN\]', '', text, flags=re.DOTALL).strip()
-    screen = screen_matches[0].strip() if screen_matches else ""
-    return voice, screen
+
+    return voice, screen, action, refined
 
 
 def get_model():
@@ -128,29 +136,29 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
             if not stt_text.strip():
                 return
             last_activity_time = time.time()  # ← 발화 감지 시 갱신
-            refined_text = await asyncio.to_thread(refine_stt, stt_text.strip())
 
             # 욕설 필터링 (1차 필터링과 동일한 함수 재사용)
             from api.main import contains_blocked_keyword
-            if contains_blocked_keyword(refined_text):
+            if contains_blocked_keyword(stt_text.strip()):
                 await websocket.send_text(
                     json.dumps({
                         "stt_text": stt_text.strip(),
-                        "refined_text": refined_text,
                         "voice": "부적절한 표현이 포함되어 있습니다.",
                         "screen": "",
+                        "action": "NONE",
                     }, ensure_ascii=False)
                 )
-                return   
-        
-            response = await asyncio.to_thread(chat, refined_text, session_id)
-            voice, screen = split_response(response)
+                return
+
+            response = await asyncio.to_thread(chat, stt_text.strip(), session_id)
+            voice, screen, action, refined = split_response(response)
             await websocket.send_text(
                 json.dumps({
                     "stt_text": stt_text.strip(),
-                    "refined_text": refined_text,
+                    "refined_text": refined or stt_text.strip(),
                     "voice": voice,
                     "screen": screen,
+                    "action": action,
                 }, ensure_ascii=False)
             )
             # JSON 직후 TTS 오디오를 binary frame으로 전송 → 프론트가 받아서 바로 재생
@@ -172,9 +180,9 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                     await websocket.send_text(
                         json.dumps({
                             "stt_text": "",
-                            "refined_text": "",
                             "voice": "일정 시간 동안 이용이 없어 초기화되었습니다.",
-                            "screen": "TIMEOUT",
+                            "screen": "",
+                            "action": "TIMEOUT",
                         }, ensure_ascii=False)
                     )
                 except:
@@ -227,7 +235,7 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                         in_speech = False
                         pre_roll.clear()
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         from db.sqlite import clear_cart
         from app.agent import clear_history
         clear_cart(session_id)
