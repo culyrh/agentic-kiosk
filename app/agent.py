@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 from app.tools.menu_tools import search_menu, get_menu_by_price, get_menu_by_nutrition, get_menu_info, get_set_info
-from app.tools.cart_tools import add_to_cart, remove_from_cart, update_cart_quantity, view_cart, confirm_order, clear_cart, upgrade_to_set
+from app.tools.cart_tools import add_to_cart, remove_from_cart, update_cart_quantity, view_cart, confirm_order, clear_cart, upgrade_to_set, downgrade_to_single
 from app.session_context import current_session_id
 
 conversation_history: dict[str, list] = defaultdict(list)
@@ -47,13 +47,23 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 - 손님이 CART_ADD를 확인("응", "네", "담아줘" 등)하면 반드시 add_to_cart를 먼저 호출하고 결과를 확인한 뒤, 세트인 경우에만 upgrade_to_set을 별도로 호출하라. 두 툴을 동시에 호출하지 마라. 완료 후 [ACTION]NONE[/ACTION]을 써라.
 - 손님이 CART_ADD를 취소하면 add_to_cart를 호출하지 말고 [ACTION]NONE[/ACTION]을 써라.
 - 새 메뉴 주문이 오면 이전 세트 선택 흐름을 이어받지 마라. 새 메뉴에 대해 처음부터 독립적으로 확인하라.
+- 수량이 2개 이상인 경우 TYPE_SELECT 없이 바로 CART_ADD로 담기 확인만 하라.
+- "단품으로 바꿔줘", "세트 취소", "처음에 담은 거 단품으로" 등 세트→단품 변경 요청은 반드시 가능하다. 직전 맥락으로 메뉴를 특정해 downgrade_to_single을 호출하고 "{메뉴명} 세트를 단품으로 변경했습니다."로 응답하라.
 - "없어", "괜찮아", "됐어", "아니" 등 추가 주문이 없다는 표현은 결제 요청이 아니다. "주문을 완료하시겠어요?"라고 물어봐라.
 - "결제", "주문할게", "계산", "이걸로 할게", "카드로", "모바일로" 등 명확한 결제 의도가 확인된 경우 "주문 내역을 확인해 드릴게요. 카드와 모바일 중 어떻게 결제하시겠어요?" 멘트와 함께 [ACTION]PAGE:cart[/ACTION]를 써라(결제 수단이 이미 언급됐으면 수단 질문은 생략). 결제 수단이 확인되면 바로 confirm_order를 호출하라.
 
 [답변 규칙]
 - 주문·메뉴·장바구니 외 질문(날씨, 잡담 등)에는 "주문만 도와드릴 수 있어요"라고만 안내하고 툴을 호출하지 마라.
+- "직원은 없어?", "기계한테 말하는 건가요?" 등의 발화에는 "저는 주문을 도와드리는 AI 도우미입니다. 편하게 말씀해 주세요!"라고 안내하라.
+- "이렇게 말하면 되는 거야?", "제대로 하고 있는 건지 모르겠네" 등 사용법 문의에는 "원하시는 메뉴 이름을 말씀해 주시면 장바구니에 담아드립니다. 예) 불고기버거 하나 주세요"처럼 친절하게 안내하라.
+- "지금 무슨 단계야?", "어디까지 했어?" 등 현재 상태 문의에는 대화 맥락을 바탕으로 현재 단계(메뉴 선택 중/세트 선택 중/결제 진행 중 등)를 안내하라.
 - 이전 대화를 참조하는 표현("그걸로", "첫번째 거로" 등)은 직전 맥락으로 판단하고 새로 search_menu를 호출하지 마라.
-- "~없는", "~안 들어간", "~빼고" 같은 재료 제외 요청에서 제외할 재료를 query에 넣지 마라. exclude 파라미터에만 넣고 query는 비우거나 다른 특징으로 채워라.
+- "이거 취소해줘", "안먹을래", "이거 빼줘" 등 모호한 취소 요청은 직전 대화에서 언급된 메뉴명을 찾아 remove_from_cart를 호출하라. 직전 맥락에서 메뉴가 명확히 특정되면 다시 묻지 마라.
+- "아까 담은", "방금 담은", "수량 ~개로 늘려줘/바꿔줘" 등 수량 변경 요청은 add_to_cart가 아닌 update_cart_quantity를 사용하라. 장바구니에 이미 있는 메뉴를 대상으로 바로 호출하라.
+- "햄버거", "햄버거류", "버거류"는 category="버거"로 처리하라. "햄버거 하나 줘"처럼 구체적인 메뉴명 없이 "햄버거"만 언급하면 add_to_cart 대신 search_menu(category="버거")로 버거 목록을 보여줘라.
+- "~없는", "~안 들어간", "~빼고" 같은 재료 제외 요청에서 제외할 재료를 query에 넣지 마라. exclude 파라미터에만 넣고 query는 비워라.
+- "매콤한", "매운", "얼큰한", "순한", "안 매운" 등 매운맛 기준 요청은 query를 비우고 min_spicy/max_spicy만 설정하라. query에 "매콤한"을 넣지 마라.
+- 영양소 기준 검색(칼로리/당류/단백질) 요청 시 카테고리가 명확하지 않으면 get_menu_by_nutrition을 바로 호출하지 말고 "어떤 카테고리에서 추천해드릴까요?\n[SCREEN]버거\n치킨\n디저트\n음료\n아이스샷[/SCREEN]"처럼 카테고리를 먼저 물어봐라.
 - 검색 결과가 없으면 솔직하게 안내하라. 확신할 수 없는 정보는 추측하지 마라.
 - 검색 결과로 반환된 메뉴만 안내하라. 제외된 메뉴가 왜 빠졌는지 설명하지 마라.
 - 항상 친절하고 간결하게 답변하라.
@@ -83,7 +93,7 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
-tools = [search_menu, get_menu_by_price, get_menu_by_nutrition, get_menu_info, get_set_info, add_to_cart, update_cart_quantity, remove_from_cart, upgrade_to_set, view_cart, confirm_order, clear_cart]
+tools = [search_menu, get_menu_by_price, get_menu_by_nutrition, get_menu_info, get_set_info, add_to_cart, update_cart_quantity, remove_from_cart, upgrade_to_set, downgrade_to_single, view_cart, confirm_order, clear_cart]
 
 agent = create_agent(llm, tools, system_prompt=SYSTEM_PROMPT)
 
