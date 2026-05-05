@@ -119,7 +119,7 @@ def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list = []
         if not rows:
             terms = _build_search_terms(normalized, clean_name)
             collected = {}
-            half = max(2, len(normalized) // 2)
+            half = max(3, len(normalized) // 2)
             for term in terms:
                 cur.execute(
                     "SELECT id, price, name, allergy FROM menu WHERE REPLACE_SPACE(name) LIKE ?",
@@ -274,7 +274,7 @@ def remove_from_cart(item_name: str) -> str:
         if not rows:
             terms = _build_search_terms(normalized, clean_name)
             collected = {}
-            half = max(2, len(normalized) // 2)
+            half = max(3, len(normalized) // 2)
             for term in terms:
                 cur.execute(
                     """SELECT m.id, m.name FROM cart c
@@ -369,7 +369,7 @@ def update_cart_quantity(item_name: str, quantity: int) -> str:
         if not rows:
             terms = _build_search_terms(normalized, clean_name)
             collected = {}
-            half = max(2, len(normalized) // 2)
+            half = max(3, len(normalized) // 2)
             for term in terms:
                 cur.execute(
                     """SELECT m.id, m.name FROM cart c
@@ -536,6 +536,73 @@ def upgrade_to_set(burger_name: str, drink_option: str, side_option: str) -> str
     conn.close()
 
     return f"{burger_name_actual} 세트로 변경했습니다. (음료: {drink_option}, 사이드: {side_option}, {total_price:,}원)"
+
+
+@tool
+def downgrade_to_single(burger_name: str) -> str:
+    """장바구니의 세트 버거를 단품으로 변경한다.
+    "단품으로 바꿔줘", "세트 취소해줘", "처음에 담은 거 단품으로" 등의 요청에 사용하라.
+    직전 대화 맥락으로 메뉴를 특정하고 이 툴을 호출하라. 불가능하다고 안내하지 마라.
+
+    burger_name: 단품으로 변경할 버거명
+    """
+    session_id = current_session_id.get()
+    conn = sqlite3.connect(DB_PATH)
+    conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
+    cur = conn.cursor()
+
+    clean_name = re.sub(r'\[.*?\]', '', burger_name).strip()
+    normalized = clean_name.replace(" ", "")
+    tokens = [t for t in clean_name.split() if t] or [normalized]
+
+    # 1차: 완전 일치 (세트인 항목만)
+    cur.execute(
+        """SELECT c.cart_id, m.name, m.price FROM cart c
+           JOIN menu m ON c.menu_id = m.id
+           WHERE c.session_id = ? AND c.is_set = 1 AND REPLACE_SPACE(m.name) = ?""",
+        (session_id, normalized)
+    )
+    row = cur.fetchone()
+
+    if not row and len(tokens) > 1:
+        and_conditions = " AND ".join(["REPLACE_SPACE(m.name) LIKE ?" for _ in tokens])
+        cur.execute(
+            f"""SELECT c.cart_id, m.name, m.price FROM cart c
+                JOIN menu m ON c.menu_id = m.id
+                WHERE c.session_id = ? AND c.is_set = 1 AND {and_conditions}""",
+            [session_id] + [f"%{t}%" for t in tokens]
+        )
+        row = cur.fetchone()
+
+    if not row:
+        # 세트 항목 전체 조회로 fallback (가장 최근 추가된 세트)
+        cur.execute(
+            """SELECT c.cart_id, m.name, m.price FROM cart c
+               JOIN menu m ON c.menu_id = m.id
+               WHERE c.session_id = ? AND c.is_set = 1
+               ORDER BY c.cart_id DESC LIMIT 1""",
+            (session_id,)
+        )
+        row = cur.fetchone()
+
+    if not row:
+        conn.close()
+        return "장바구니에 세트로 담긴 버거가 없습니다."
+
+    cart_id, actual_name, single_price = row
+    try:
+        unit_price = int(str(single_price).replace(",", ""))
+    except (ValueError, AttributeError):
+        unit_price = 0
+
+    cur.execute(
+        "UPDATE cart SET is_set=0, drink_option=NULL, side_option=NULL, unit_price=? WHERE cart_id=?",
+        (unit_price, cart_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return f"{actual_name} 세트를 단품으로 변경했습니다."
 
 
 @tool
