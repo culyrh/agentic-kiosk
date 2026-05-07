@@ -8,6 +8,7 @@ from langchain.agents import create_agent
 from app.tools.menu_tools import search_menu, get_menu_by_price, get_menu_by_nutrition, get_menu_info, get_set_info
 from app.tools.cart_tools import add_to_cart, remove_from_cart, update_cart_quantity, view_cart, confirm_order, clear_cart, upgrade_to_set, downgrade_to_single
 from app.session_context import current_session_id
+from app.latency_tracker import LatencyTracker
 
 conversation_history: dict[str, list] = defaultdict(list)
 
@@ -98,13 +99,15 @@ tools = [search_menu, get_menu_by_price, get_menu_by_nutrition, get_menu_info, g
 agent = create_agent(llm, tools, system_prompt=SYSTEM_PROMPT)
 
 
-def chat(user_input: str, session_id: str = "default") -> str:
-    
+def chat(user_input: str, session_id: str = "default") -> tuple[str, dict]:
+
     current_session_id.set(session_id)
     history = conversation_history[session_id]
     history.append({"role": "user", "content": user_input})
-    result = agent.invoke({"messages": history})
-    
+
+    tracker = LatencyTracker()
+    result = agent.invoke({"messages": history}, config={"callbacks": [tracker]})
+
     # 이번 턴에 추가된 메시지(tool call, tool result, 최종 응답)를 히스토리에 저장.
     new_messages = result["messages"][len(history):]
     history.extend(new_messages)
@@ -119,7 +122,7 @@ def chat(user_input: str, session_id: str = "default") -> str:
     ):
         conversation_history[session_id].clear()
 
-    return final_response
+    return final_response, tracker.summary()
 
 
 def clear_history(session_id: str) -> None:
@@ -140,5 +143,6 @@ if __name__ == "__main__":
         if not user_input:
             continue
         
-        response = chat(user_input)
+        response, latency = chat(user_input)
         print(f"도우미: {response}\n")
+        print(f"[LATENCY] agent: llm={latency['llm_total_ms']}ms tool={latency['tool_total_ms']}ms calls={latency['detail']}\n")
