@@ -68,7 +68,7 @@ def transcribe_array(model: WhisperModel, audio: "np.ndarray", language: str = "
     segments, _ = model.transcribe(
         audio.astype(np.float32),
         language=language,
-        beam_size=3,
+        beam_size=2,
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=300),
     )

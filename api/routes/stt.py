@@ -132,10 +132,13 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
         # pipeline_lock으로 감싸 동시 실행을 막고 히스토리 race condition 방지
         nonlocal last_activity_time
         async with pipeline_lock:
+            t0 = time.time()
             stt_text = await asyncio.to_thread(transcribe_array, model, audio)
+            t1 = time.time()
+
             if not stt_text.strip():
                 return
-            last_activity_time = time.time()  # ← 발화 감지 시 갱신
+            last_activity_time = t1
 
             # 욕설 필터링 (1차 필터링과 동일한 함수 재사용)
             from api.main import contains_blocked_keyword
@@ -150,8 +153,36 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                 )
                 return
 
-            response = await asyncio.to_thread(chat, stt_text.strip(), session_id)
+            response, agent_latency = await asyncio.to_thread(chat, stt_text.strip(), session_id)
+            t2 = time.time()
+
             voice, screen, action, refined = split_response(response)
+
+            audio_bytes = None
+            if voice:
+                audio_bytes = await asyncio.to_thread(synthesize, voice)
+            t3 = time.time()
+
+            latency = {
+                "stt_ms":   round((t1 - t0) * 1000),
+                "agent_ms": round((t2 - t1) * 1000),
+                "tts_ms":   round((t3 - t2) * 1000),
+                "total_ms": round((t3 - t0) * 1000),
+                "agent_detail": agent_latency,
+            }
+            print(
+                f"[LATENCY] stt={latency['stt_ms']}ms"
+                f" agent={latency['agent_ms']}ms"
+                f" (llm={agent_latency['llm_total_ms']}ms"
+                f" tool={agent_latency['tool_total_ms']}ms"
+                f" llm_calls={agent_latency['llm_calls']})"
+                f" tts={latency['tts_ms']}ms"
+                f" total={latency['total_ms']}ms"
+            )
+            for entry in agent_latency["detail"]:
+                label = entry["name"] if entry["type"] == "tool" else "LLM"
+                print(f"  └─ [{entry['type']}] {label}: {entry['ms']}ms")
+
             await websocket.send_text(
                 json.dumps({
                     "stt_text": stt_text.strip(),
@@ -159,11 +190,11 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                     "voice": voice,
                     "screen": screen,
                     "action": action,
+                    "latency": latency,
                 }, ensure_ascii=False)
             )
             # JSON 직후 TTS 오디오를 binary frame으로 전송 → 프론트가 받아서 바로 재생
-            if voice:
-                audio_bytes = await asyncio.to_thread(synthesize, voice)
+            if audio_bytes:
                 await websocket.send_bytes(audio_bytes)
 
     async def check_inactivity():
