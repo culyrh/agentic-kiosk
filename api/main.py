@@ -13,6 +13,7 @@ from api.routes.order import router as order_router
 from api.routes.search import router as search_router
 from api.routes.options import router as options_router
 from api.routes.sets import router as sets_router
+from fastapi.middleware.cors import CORSMiddleware
 
 
 # 욕설/비속어 키워드 목록
@@ -33,12 +34,23 @@ def contains_blocked_keyword(text: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    get_model()      # 서버 시작 시 Whisper 모델 미리 로드
-    get_chroma_db()  # 서버 시작 시 ChromaDB 임베딩 모델 미리 로드
+    get_model()       # 서버 시작 시 Whisper 모델 미리 로드
+    get_chroma_db()   # 서버 시작 시 ChromaDB 임베딩 모델 미리 로드
     yield
 
 
 app = FastAPI(title="Sadollar AI API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 1차 필터링 미들웨어
 @app.middleware("http")

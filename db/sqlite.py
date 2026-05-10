@@ -153,9 +153,17 @@ def get_set_by_id(set_id: int):
 def get_cart(session_id: str):
     conn = get_connection()
     rows = conn.execute("""
-        SELECT c.*, m.name, m.img_url
+        SELECT c.*, m.name, m.img_url,
+               dm.name as drink_name,
+               do.extra_price as drink_extra_price,
+               sm.name as side_name,
+               so.extra_price as side_extra_price
         FROM cart c
         JOIN menu m ON c.menu_id = m.id
+        LEFT JOIN options do ON c.drink_option = do.option_id
+        LEFT JOIN menu dm ON do.menu_id = dm.id
+        LEFT JOIN options so ON c.side_option = so.option_id
+        LEFT JOIN menu sm ON so.menu_id = sm.id
         WHERE c.session_id = ?
     """, (session_id,)).fetchall()
     conn.close()
@@ -165,11 +173,28 @@ def get_cart(session_id: str):
 def add_cart(session_id: str, menu_id: int, is_set: int,
              drink_option: str, side_option: str, quantity: int, unit_price: int):
     conn = get_connection()
-    cursor = conn.execute("""
-        INSERT INTO cart (session_id, menu_id, is_set, drink_option, side_option, quantity, unit_price)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (session_id, menu_id, is_set, drink_option, side_option, quantity, unit_price))
-    cart_id = cursor.lastrowid
+    
+    # 이미 같은 메뉴가 있는지 확인
+    existing = conn.execute("""
+        SELECT cart_id, quantity FROM cart
+        WHERE session_id = ? AND menu_id = ? AND is_set = ?
+    """, (session_id, menu_id, is_set)).fetchone()
+    
+    if existing:
+        # 있으면 수량 증가
+        conn.execute("""
+            UPDATE cart SET quantity = quantity + ?
+            WHERE cart_id = ?
+        """, (quantity, existing["cart_id"]))
+        cart_id = existing["cart_id"]
+    else:
+        # 없으면 새로 추가
+        cursor = conn.execute("""
+            INSERT INTO cart (session_id, menu_id, is_set, drink_option, side_option, quantity, unit_price)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, menu_id, is_set, drink_option, side_option, quantity, unit_price))
+        cart_id = cursor.lastrowid
+    
     conn.commit()
     conn.close()
     return cart_id

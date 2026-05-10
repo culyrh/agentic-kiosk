@@ -133,6 +133,12 @@ TTS
 - DB/ChromaDB 스키마 확정 이후
 - "세트 포함 + 8000원 이하 + 매운 버거" 같은 복합 필터 쿼리 실패 케이스가 쌓일 때
 
+### 3. 현재 한계 및 향후 개선 계획
+
+**remove_from_cart 중복 호출**
+- 현재: SYSTEM_PROMPT 지시 + 턴당 1회 플래그(`_remove_called`)로 방지
+- 한계: LLM이 히스토리에서 정확한 메뉴명을 알고 있을 때 엣지케이스 발생 가능
+
 ---
 
 ## 전체 파이프라인 테스트
@@ -183,6 +189,7 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 |------|------|------|
 | `search_menu` | menu_tools.py | RAG 기반 메뉴 검색 |
 | `get_menu_by_price` | menu_tools.py | 가격 기준 메뉴 조회 (최저/최고/예산 범위) |
+| `get_menu_by_nutrition` | menu_tools.py | 영양소(칼로리/당류/단백질) 기준 정렬 조회 |
 | `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
 | `get_set_info` | menu_tools.py | 세트 메뉴 정보 + 옵션 목록 |
 | `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |
@@ -206,7 +213,6 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | set_menus | 버거별 세트 구성 및 가격 | 23개 |
 | cart | 주문 중인 장바구니 | - |
 | orders | 결제 완료된 주문 내역 | - |
-| order_items | 주문별 메뉴 상세 내역 | - |
 
 > **set_options 테이블을 제거한 이유**
 > 롯데리아의 모든 세트는 동일한 음료/사이드 옵션을 제공하므로 세트별 옵션 연결 테이블이 불필요했습니다.
@@ -274,18 +280,6 @@ LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
 | payment_method | TEXT | 결제 수단 |
 | status | TEXT | pending → paid |
 | created_at | TEXT | 주문 시각 |
-
-**order_items 테이블**
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| item_id | INTEGER | 항목 ID (자동 증가) |
-| order_id | INTEGER | 주문 ID (orders 테이블 참조) |
-| menu_id	| INTEGER |	메뉴 ID (menu 테이블 참조) |
-|quantity |	INTEGER |	수량 |
-| unit_price | INTEGER | 단품/세트 단가 |
-|drink_option	| TEXT | 선택한 음료 (세트인 경우) |
-| side_option | TEXT | 선택한 사이드 (세트인 경우) |
-
 
 ### 메뉴 ID 체계
 
@@ -444,7 +438,7 @@ sadollar-kiosk/
 │   │   ├── loader.py              # ria_menu.json → Document 변환
 │   │   ├── vector_store.py        # ChromaDB 임베딩 저장
 │   │   ├── chroma.py              # ChromaDB 연결 및 검색
-│   │   └── search.py              # RAG 검색 로직
+│   │   └── search.py              # RAG 검색 로직 (AI 로직)
 │   └── tools/
 │       ├── menu_tools.py          # 메뉴 검색 도구
 │       └── cart_tools.py          # 장바구니/주문 도구
