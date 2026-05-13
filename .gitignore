@@ -9,3 +9,5 @@ chromedriver.exe
 chromedriver-win64/
 tests/notes.md
 *.db
+
+tests/recordings/
