@@ -357,18 +357,15 @@ def get_menu_info(name: str) -> str:
     return "\n".join(result_lines)
 
 
-def search_menu_logic(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], max_spicy: int = None, min_spicy: int = None, limit: int = 3):
+def search_menu_logic(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], spicy_level: int = None, limit: int = 3):
     exclude = _expand_exclude(exclude) if exclude else []
 
     def build_spicy_clause():
-        clauses, params = [], []
-        if max_spicy is not None:
-            # NULL은 맵지 않은 메뉴로 간주 → max_spicy 조건에 포함
-            clauses.append("(spicy_level <= ? OR spicy_level IS NULL)"); params.append(max_spicy)
-        if min_spicy is not None:
-            # NULL은 매운 맛 정보 없음 → min_spicy 조건에서 제외
-            clauses.append("spicy_level >= ?"); params.append(min_spicy)
-        return ("AND " + " AND ".join(clauses)) if clauses else "", params
+        if spicy_level is None:
+            return "", []
+        if spicy_level == 0:
+            return "AND spicy_level = 0", []
+        return "AND spicy_level >= 1", []
 
     def format_row(name, price, description, allergy):
         return f"메뉴명: {name}\n        가격: {price}원\n        설명: {description}\n        알레르기: {allergy}"
@@ -406,7 +403,7 @@ def search_menu_logic(query: str = "", category: str = None, badge: str = None, 
                 params.extend([f"%{item}%", f"%{item}%"])
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else "WHERE 1=1"
-        sql_limit = max(limit, 20) if exclude else max(limit, 3)
+        sql_limit = max(limit, 10) if exclude else max(limit, 3)
         badge_order = "CASE WHEN badge LIKE '%BEST%' THEN 0 WHEN badge LIKE '%NEW%' THEN 1 ELSE 2 END ASC"
         cur.execute(
             f"SELECT name, price, description, allergy FROM menu {where} {spicy_clause} ORDER BY {badge_order} LIMIT ? OFFSET ?",
@@ -425,36 +422,36 @@ def search_menu_logic(query: str = "", category: str = None, badge: str = None, 
         chroma_filters.append({"category": {"$eq": category}})
     filters = chroma_filters[0] if chroma_filters else None
 
-    spicy_active = max_spicy is not None or min_spicy is not None
+    spicy_active = spicy_level is not None
     exclude_active = bool(exclude)
     k = 10 if (spicy_active or exclude_active) else 5
 
     results = get_chroma_db().similarity_search_with_score(query, k=k + offset, filter=filters)
 
     def spicy_ok(doc):
+        if spicy_level is None:
+            return True
         level = doc.metadata.get("spicy_level")
-        if max_spicy is not None and (level is None or level > max_spicy):
-            return False
-        if min_spicy is not None and (level is None or level < min_spicy):
-            return False
-        return True
+        if spicy_level == 0:
+            return level == 0
+        return level is not None and level >= 1
 
     def badge_ok(doc):
         return not badge or badge in doc.metadata.get("badge", "")
 
-    use_threshold = not category and not badge and not spicy_active and not exclude_active
+    use_threshold = not category and not badge and not spicy_level and not exclude_active
     merged = [
         (doc, score) for doc, score in results
-        if (not use_threshold or score < 0.7)
+        if (not use_threshold or score < 0.5)
         and allergy_ok(doc.metadata.get("allergy", ""), doc.page_content)
         and spicy_ok(doc)
         and badge_ok(doc)
     ]
-    return [(doc.page_content, round(score, 4)) for doc, score in merged[offset:offset + limit]]
+    return [(doc.page_content.split("\n")[0].replace("메뉴명:", "").strip(), round(score, 4)) for doc, score in merged[offset:offset + limit]]
 
 
 @tool
-def search_menu(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], max_spicy: int = None, min_spicy: int = None, limit: int = 3) -> str:
+def search_menu(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], spicy_level: int = None, limit: int = 3) -> str:
     """사용자 요청에 맞는 메뉴를 검색한다. 메뉴 추천 또는 어떤 메뉴가 있는지 물어볼 때만 사용하라.
 
     - query: 재료, 맛, 특징 등 검색 의도 전체. 유사어도 포함.
@@ -471,16 +468,12 @@ def search_menu(query: str = "", category: str = None, badge: str = None, exclud
     - exclude_names: 제외할 메뉴명 목록. query에 "제외/말고" 넣지 말고 이 파라미터 사용.
     - offset: 이미 보여준 메뉴 수. "다른 거/더 있어?" → 직전 offset+3.
     - limit: 반환할 메뉴 수. 기본 3개. "전체/다/모두 알려줘" → 20.
-    - max_spicy / min_spicy: 매운맛 범위 필터. spicy_level 기준(0=안매움, 1=매콤/약간매움, 2=보통, 3=매움, 10=극매움).
-      "안 매운 거/순한 거/덜 매운 거" → max_spicy=0
-      "매콤한 거/약간 매운 거/조금 매운 거" → min_spicy=1
-      "보통 매운 거" → min_spicy=1
-      "매운 거 추천/매운 거" → min_spicy=1
-      "아주 매운 거/극매운" → min_spicy=2
-      언급 없으면 둘 다 None.
+    - spicy_level: 매운맛 필터. 언급 없으면 None.
+      "안 매운 거/순한 거/덜 매운 거/안 맵게" → spicy_level=0
+      "매콤한 거/약간 매운 거/매운 거/아주 매운 거/극매운" → spicy_level=1
     영양소 기준 검색(칼로리/당류/단백질)은 get_menu_by_nutrition을 사용하라.
     """
-    results = search_menu_logic(query, category, badge, exclude, offset, exclude_names, max_spicy, min_spicy, limit)
+    results = search_menu_logic(query, category, badge, exclude, offset, exclude_names, spicy_level, limit)
 
     if not results:
         return "검색 결과가 없습니다."

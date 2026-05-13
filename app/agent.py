@@ -1,3 +1,4 @@
+import os
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -62,9 +63,9 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 - "이거 취소해줘", "안먹을래", "이거 빼줘" 등 모호한 취소 요청은 직전 대화에서 언급된 메뉴명을 찾아 remove_from_cart를 호출하라. 직전 맥락에서 메뉴가 명확히 특정되면 다시 묻지 마라.
 - "아까 담은", "방금 담은", "수량 ~개로 늘려줘/바꿔줘" 등 수량 변경 요청은 add_to_cart가 아닌 update_cart_quantity를 사용하라. 장바구니에 이미 있는 메뉴를 대상으로 바로 호출하라.
 - "햄버거", "햄버거류", "버거류"는 category="버거"로 처리하라. "햄버거 하나 줘"처럼 구체적인 메뉴명 없이 "햄버거"만 언급하면 add_to_cart 대신 search_menu(category="버거")로 버거 목록을 보여줘라.
-- "~없는", "~안 들어간", "~빼고" 같은 재료 제외 요청에서 제외할 재료를 query에 넣지 마라. exclude 파라미터에만 넣고 query는 비워라.
-- "매콤한", "매운", "얼큰한", "순한", "안 매운" 등 매운맛 기준 요청은 query를 비우고 min_spicy/max_spicy만 설정하라. query에 "매콤한"을 넣지 마라.
-- 영양소 기준 검색(칼로리/당류/단백질) 요청 시 카테고리가 명확하지 않으면 get_menu_by_nutrition을 바로 호출하지 말고 "어떤 카테고리에서 추천해드릴까요?\n[SCREEN]버거\n치킨\n디저트\n음료\n아이스샷[/SCREEN]"처럼 카테고리를 먼저 물어봐라.
+- "~없는", "~안 들어간", "~빼고" 같은 재료 제외 요청은 카테고리가 없어도 search_menu(exclude=[재료])를 바로 호출하라. 제외할 재료를 query에 넣지 마라. exclude 파라미터에만 넣고 query는 비워라.
+- "매콤한", "매운", "얼큰한", "순한", "안 매운" 등 매운맛 기준 요청은 query를 비우고 spicy_level만 설정하라. query에 "매콤한"을 넣지 마라.
+- 영양소 기준 검색(칼로리/당류/단백질) 요청은 카테고리를 묻지 말고 바로 get_menu_by_nutrition을 호출하라. category는 아래 기준으로 설정하라: 아이스크림/소프트콘→"아이스샷", 감자/너겟/치즈스틱→"디저트", 버거/햄버거→"버거", 치킨/윙→"치킨", 콜라/음료/커피→"음료". 언급이 없으면 None.
 - 검색 결과가 없으면 솔직하게 안내하라. 확신할 수 없는 정보는 추측하지 마라.
 - 검색 결과로 반환된 메뉴만 안내하라. 제외된 메뉴가 왜 빠졌는지 설명하지 마라.
 - 항상 친절하고 간결하게 답변하라.
@@ -92,7 +93,7 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 - 카테고리가 명확한 메뉴 검색 결과를 보여줄 때 → [ACTION]TAB:{카테고리명}[/ACTION] (카테고리명: 추천메뉴/버거/디저트/치킨/음료/커피/아이스샷/행사메뉴 중 하나)
 - 그 외 모든 응답 → [ACTION]NONE[/ACTION]"""
 
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
+llm = ChatOpenAI(model=os.getenv("LLM_MODEL", "gpt-4o"), temperature=0)
 
 tools = [search_menu, get_menu_by_price, get_menu_by_nutrition, get_menu_info, get_set_info, add_to_cart, update_cart_quantity, remove_from_cart, upgrade_to_set, downgrade_to_single, view_cart, confirm_order, clear_cart]
 
