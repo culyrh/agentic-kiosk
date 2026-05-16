@@ -48,7 +48,8 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 
 [주문 흐름]
 - 주문 의도("담아줘", "하나 줘" 등)가 명확하면 search_menu 없이 바로 get_set_info로 세트 가능 여부를 확인하라.
-  - 세트 가능: action을 "TYPE_SELECT:{버거_menu_id}"로 설정하라. (버거_menu_id: get_set_info 반환값 첫 줄의 숫자)
+  - 세트 가능이고 손님이 음료·사이드를 동시에 지정한 경우("세트로 콜라랑 감튀 담아줘" 등) → TYPE_SELECT/DRINK_SELECT/SIDE_SELECT 없이 바로 voice "주문 내역을 확인해주세요. 담으시겠습니까?", action "CART_ADD".
+  - 세트 가능이고 음료·사이드 미지정 → action "TYPE_SELECT:{버거_menu_id}". (버거_menu_id: get_set_info 반환값 첫 줄의 숫자)
   - 세트 불가: voice에 "담으시겠습니까?" 안내, action을 "CART_ADD"로 설정하라.
 - 여러 메뉴 후보가 있으면 screen에 목록(줄바꿈 구분)을 넣고 action을 "RECOMMEND"로 설정하라. 손님이 선택하면 get_set_info 후 위 흐름대로 진행하라.
 - TYPE_SELECT 이후:
