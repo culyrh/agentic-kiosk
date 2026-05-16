@@ -224,17 +224,23 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                     if data.get("type") == "touch":
                         last_activity_time = time.time()
                     elif data.get("type") == "payment_complete":
-                        from db.sqlite import clear_cart
+                        from app.tools.cart_tools import confirm_order
                         from app.agent import clear_history
-                        clear_cart(session_id)
-                        clear_history(session_id)
-                        voice_text = "주문이 완료되었습니다. 감사합니다!"
-                        audio_bytes = await asyncio.to_thread(synthesize, voice_text)
-                        await websocket.send_text(
-                            json.dumps({"voice": voice_text, "action": "PAGE:complete"}, ensure_ascii=False)
-                        )
-                        if audio_bytes:
-                            await websocket.send_bytes(audio_bytes)
+                        from app.session_context import current_session_id
+                        payment_method = data.get("payment_method", "카드")
+                        current_session_id.set(session_id)
+                        result = await asyncio.to_thread(confirm_order.func, payment_method)
+                        if "주문이 완료되었습니다" in result:
+                            clear_history(session_id)
+                            voice_text = "주문이 완료되었습니다. 감사합니다!"
+                            audio_bytes = await asyncio.to_thread(synthesize, voice_text)
+                            await websocket.send_text(
+                                json.dumps({"voice": voice_text, "action": "PAGE:complete"}, ensure_ascii=False)
+                            )
+                            if audio_bytes:
+                                await websocket.send_bytes(audio_bytes)
+                        else:
+                            print(f"[ERROR] confirm_order 실패: {result}")
                 except:
                     pass
                 continue

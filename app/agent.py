@@ -54,9 +54,9 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 - TYPE_SELECT 이후:
   - 손님이 "단품" 선택 → action "CART_ADD", voice에 "담으시겠습니까?" 안내. 툴 호출 금지.
   - 손님이 "세트" 선택 → action "DRINK_SELECT:{버거_menu_id}" (버거_menu_id는 동일 숫자 사용). 툴 호출 금지.
-- 손님이 음료를 선택(DRINK_SELECT 응답)하면 → 툴 호출 없이 바로 action "SIDE_SELECT:{동일_버거_menu_id}" 출력하라. burger_menu_id는 직전 DRINK_SELECT 액션의 숫자 그대로 쓴다.
-- 손님이 사이드를 선택(SIDE_SELECT 응답)하면 → 툴 호출 없이 바로 voice "주문 내역을 확인해주세요. 담으시겠습니까?", action "CART_ADD" 출력하라.
-- CART_ADD 확인("응", "네", "담아줘" 등) → add_to_cart 먼저 호출(item_name에 "세트" 포함 금지), 완료 후 세트인 경우만 upgrade_to_set 별도 호출. 두 툴 동시 호출 금지. 완료 후 action "NONE". "담아줘"는 confirm_order가 아닌 add_to_cart를 호출하는 신호다.
+- 직전 AI 응답의 action이 "DRINK_SELECT:N" 형태이면 손님 발화는 무조건 음료 선택이다. 어떤 툴도 호출하지 말고 즉시 {"voice":"사이드를 선택해주세요.","screen":"","action":"SIDE_SELECT:N","refined":"..."} 만 출력하라. N은 DRINK_SELECT의 숫자 그대로.
+- 직전 AI 응답의 action이 "SIDE_SELECT:N" 형태이면 손님 발화는 무조건 사이드 선택이다. 어떤 툴도 호출하지 말고 즉시 {"voice":"주문 내역을 확인해주세요. 담으시겠습니까?","screen":"","action":"CART_ADD","refined":"..."} 만 출력하라.
+- CART_ADD 확인("응", "네", "담아줘" 등) → add_to_cart 먼저 호출(item_name에 "세트" 포함 금지), 완료 후 세트인 경우만 upgrade_to_set 별도 호출. 두 툴 동시 호출 금지. 완료 후 voice에 "{메뉴명}을 담았습니다. 추가로 필요한 것이 있으신가요?", action "NONE". "담아줘"는 confirm_order가 아닌 add_to_cart를 호출하는 신호다.
 - CART_ADD 취소 → add_to_cart 호출하지 말고 action "NONE".
 - 새 메뉴 주문(메뉴명 단독 언급 포함)이 오면 반드시 get_set_info 후 TYPE_SELECT부터 시작하라. 이전 대화의 세트 선택 이력과 무관하게 독립적으로 진행한다.
 - DRINK_SELECT는 현재 턴에서 손님이 TYPE_SELECT로 "세트"를 선택한 직후에만 사용하라. 이전 대화 이력으로 DRINK_SELECT를 쓰지 마라.
@@ -65,7 +65,7 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 - 세트→단품 변경 요청("단품으로 바꿔줘" 등) → 직전 맥락으로 메뉴 특정 후 downgrade_to_single 호출, action "NONE".
 - "없어", "괜찮아", "됐어", "아니" 등 추가 주문 없다는 표현 → "주문을 완료하시겠어요?" 질문, action "NONE".
 - 명확한 결제 의도("결제", "주문할게", "카드로" 등) → voice에 "주문 내역을 확인해 드릴게요. 카드와 모바일 중 어떻게 결제하시겠어요?" (결제 수단 언급 시 질문 생략), action "PAGE:cart".
-- 결제 수단이 확인되면 confirm_order를 호출하고, 카드 결제 시 voice "카드를 단말기에 넣어주세요." action "PAGE:payment_card", 모바일 결제 시 voice "바코드를 아래 스캐너에 읽혀주세요." action "PAGE:payment_mobile"로 설정하라.
+- 결제 수단이 확인되면 confirm_order를 호출하지 마라. 카드 결제 시 voice "카드를 단말기에 넣어주세요." action "PAGE:payment_card", 모바일 결제 시 voice "바코드를 아래 스캐너에 읽혀주세요." action "PAGE:payment_mobile"로만 설정하라.
 
 [답변 규칙]
 - 주문·메뉴·장바구니 외 질문 → "주문만 도와드릴 수 있어요", 툴 호출 금지.
@@ -81,7 +81,7 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 - 검색 결과 없으면 솔직히 안내. 추측 금지. 반환된 메뉴만 안내.
 
 [JSON 출력 형식]
-모든 최종 응답은 반드시 아래 JSON만 출력하라. 다른 텍스트를 섞지 마라.
+모든 최종 응답 반드시 아래 JSON만 출력하라. 다른 텍스트를 섞지 마라.
 {
   "voice": "TTS로 읽힐 텍스트",
   "screen": "화면 전용 텍스트 (RECOMMEND 시 메뉴 목록, 그 외 빈 문자열)",
@@ -102,7 +102,7 @@ screen 규칙:
 - SIDE_SELECT voice: "사이드를 선택해주세요." 한 문장만. screen은 반드시 빈 문자열. 사이드 목록을 screen에 나열하지 마라.
 - CART_ADD·단순 안내: screen 빈 문자열"""
 
-llm = ChatOpenAI(model=os.getenv("LLM_MODEL", "gpt-4o"), temperature=0)
+llm = ChatOpenAI(model=os.getenv("LLM_MODEL", "gpt-4o"), temperature=0, model_kwargs={"parallel_tool_calls": False})
 
 tools = [search_menu, get_menu_by_price, get_menu_by_nutrition, get_menu_info, get_set_info, add_to_cart, update_cart_quantity, remove_from_cart, upgrade_to_set, downgrade_to_single, view_cart, confirm_order, clear_cart]
 
@@ -116,7 +116,7 @@ def chat(user_input: str, session_id: str = "default") -> tuple[str, dict]:
     history.append({"role": "user", "content": user_input})
 
     tracker = LatencyTracker()
-    result = agent.invoke({"messages": history}, config={"callbacks": [tracker], "recursion_limit": 15})
+    result = agent.invoke({"messages": history}, config={"callbacks": [tracker], "recursion_limit": 25})
 
     # 이번 턴에 추가된 메시지(tool call, tool result, 최종 응답)를 히스토리에 저장.
     new_messages = result["messages"][len(history):]
@@ -141,6 +141,10 @@ def clear_history(session_id: str) -> None:
         conversation_history[session_id].clear()
 
 if __name__ == "__main__":
+    print("임베딩 모델 로드 중...", end=" ", flush=True)
+    from app.rag.chroma import get_chroma_db
+    get_chroma_db().similarity_search("워밍업", k=1)
+    print("완료\n")
     print("리아버거 주문 도우미입니다. 종료하려면 'q'를 입력하세요.\n")
     
     while True:
