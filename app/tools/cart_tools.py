@@ -517,22 +517,31 @@ def upgrade_to_set(burger_name: str, drink_option: str, side_option: str) -> str
 
     cart_id, burger_name_actual, set_price = row
 
-    # 선택한 음료/사이드 추가금액 반영
+    # 선택한 음료/사이드의 option_id와 추가금액 조회
     total_price = set_price
+    drink_option_id = None
+    side_option_id = None
+
     for option_name, option_type in [(drink_option, '드링크'), (side_option, '사이드')]:
         opt_normalized = option_name.replace(" ", "")
         cur.execute("""
-            SELECT o.extra_price FROM options o
+            SELECT o.option_id, o.extra_price FROM options o
             JOIN menu m ON o.menu_id = m.id
             WHERE REPLACE_SPACE(m.name) LIKE ? AND o.option_type = ?
         """, (f"%{opt_normalized}%", option_type))
-        ep_row = cur.fetchone()
-        if ep_row and ep_row[0]:
-            total_price += ep_row[0]
+        row = cur.fetchone()
+        if row:
+            option_id, extra_price = row
+            if option_type == '드링크':
+                drink_option_id = option_id
+            else:
+                side_option_id = option_id
+            if extra_price:
+                total_price += extra_price
 
     cur.execute(
         "UPDATE cart SET is_set=1, drink_option=?, side_option=?, unit_price=? WHERE cart_id=?",
-        (drink_option, side_option, total_price, cart_id)
+        (drink_option_id, side_option_id, total_price, cart_id)
     )
     conn.commit()
     conn.close()
