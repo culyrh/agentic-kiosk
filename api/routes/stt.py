@@ -118,9 +118,6 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
     pipeline_lock = asyncio.Lock()
 
     async def process_and_send(audio: np.ndarray):
-        # STT → 정제 → 에이전트를 순차 실행하되, asyncio.to_thread로 동기 함수를 별도
-        # 스레드에서 실행해 이벤트 루프를 블로킹하지 않음
-        # pipeline_lock으로 감싸 동시 실행을 막고 히스토리 race condition 방지
         nonlocal last_activity_time
         async with pipeline_lock:
             t0 = time.time()
@@ -131,62 +128,67 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                 return
             last_activity_time = t1
 
-            # 욕설 필터링 (1차 필터링과 동일한 함수 재사용)
             from api.main import contains_blocked_keyword
             if contains_blocked_keyword(stt_text.strip()):
                 await websocket.send_text(
                     json.dumps({
                         "stt_text": stt_text.strip(),
                         "voice": "부적절한 표현이 포함되어 있습니다.",
-                        "screen": "",
-                        "action": "NONE",
+                        "screen": "", "action": "NONE",
                     }, ensure_ascii=False)
                 )
                 return
 
-            response, agent_latency = await asyncio.to_thread(chat, stt_text.strip(), session_id)
+            from app.agent import chat_stream
+            from voice.tts import synthesize_async
+
+            voice_parts = []
+            full_response = None
+            agent_latency = None
+            t_agent_start = time.time()
+
+            async for item in chat_stream(stt_text.strip(), session_id):
+                if isinstance(item, tuple) and item[0] == "__done__":
+                    full_response, agent_latency = item[1]
+                    break
+                # 문장 단위 voice → 즉시 TTS 합성 후 전송
+                sentence = item
+                voice_parts.append(sentence)
+                audio_bytes = await synthesize_async(sentence)
+                await websocket.send_bytes(audio_bytes)
+
             t2 = time.time()
 
-            voice, screen, action, refined = split_response(response)
-
-            audio_bytes = None
-            if voice:
-                audio_bytes = await asyncio.to_thread(synthesize, voice)
-            t3 = time.time()
+            voice, screen, action, refined = split_response(full_response or "")
+            full_voice = " ".join(voice_parts) if voice_parts else voice
 
             latency = {
                 "stt_ms":   round((t1 - t0) * 1000),
-                "agent_ms": round((t2 - t1) * 1000),
-                "tts_ms":   round((t3 - t2) * 1000),
-                "total_ms": round((t3 - t0) * 1000),
-                "agent_detail": agent_latency,
+                "agent_ms": round((t2 - t_agent_start) * 1000),
+                "tts_ms":   0,  # streaming 처리로 별도 측정 생략
+                "total_ms": round((t2 - t0) * 1000),
+                "agent_detail": agent_latency or {},
             }
+            ad = agent_latency or {}
             print(
                 f"[LATENCY] stt={latency['stt_ms']}ms"
-                f" agent={latency['agent_ms']}ms"
-                f" (llm={agent_latency['llm_total_ms']}ms"
-                f" tool={agent_latency['tool_total_ms']}ms"
-                f" llm_calls={agent_latency['llm_calls']})"
-                f" tts={latency['tts_ms']}ms"
+                f" agent={round((t2 - t_agent_start) * 1000)}ms"
+                f" (llm={ad.get('llm_total_ms', '?')}ms"
+                f" tool={ad.get('tool_total_ms', '?')}ms)"
                 f" total={latency['total_ms']}ms"
             )
-            for entry in agent_latency["detail"]:
-                label = entry["name"] if entry["type"] == "tool" else "LLM"
-                print(f"  └─ [{entry['type']}] {label}: {entry['ms']}ms")
 
+            # 스트리밍 오디오 전송 후 메타데이터 JSON 전송
             await websocket.send_text(
                 json.dumps({
                     "stt_text": stt_text.strip(),
                     "refined_text": refined or stt_text.strip(),
-                    "voice": voice,
+                    "voice": full_voice,
                     "screen": screen,
                     "action": action,
                     "latency": latency,
                 }, ensure_ascii=False)
             )
-            # JSON 직후 TTS 오디오를 binary frame으로 전송 → 프론트가 받아서 바로 재생
-            if audio_bytes:
-                await websocket.send_bytes(audio_bytes)
 
     async def check_inactivity():
         """3분 비활성 시 장바구니 + 히스토리 초기화"""

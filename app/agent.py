@@ -1,4 +1,5 @@
 import os
+import re
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -149,6 +150,104 @@ def clear_history(session_id: str) -> None:
     """세션 히스토리 초기화 (손님이 키오스크를 떠날 때 호출)"""
     if session_id in conversation_history:
         conversation_history[session_id].clear()
+
+
+_VOICE_PREFIX = '"voice": "'
+_SENTENCE_END = re.compile(r'(?<=[.!?])\s*')
+
+
+async def chat_stream(user_input: str, session_id: str = "default"):
+    """
+    LLM 응답을 스트리밍으로 받아 voice 텍스트를 문장 단위로 yield한다.
+    마지막으로 ("__done__", (full_response, latency)) 를 yield한다.
+    """
+    current_session_id.set(session_id)
+    history = conversation_history[session_id]
+    history.append({"role": "user", "content": user_input})
+
+    tracker = LatencyTracker()
+    config = {"callbacks": [tracker], "recursion_limit": 25}
+
+    search_buf = ""   # voice prefix 탐색용
+    sentence_buf = "" # 현재 문장 누적
+    in_voice = False  # voice 필드 내부 여부
+    voice_done = False
+    escape_next = False
+    full_response = None
+
+    try:
+        async for event in agent.astream_events(
+            {"messages": history},
+            config=config,
+            version="v2",
+        ):
+            kind = event["event"]
+
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                # tool_call_chunks가 있으면 툴 선택 단계 → 스킵
+                if getattr(chunk, "tool_call_chunks", None):
+                    continue
+                token = chunk.content if isinstance(chunk.content, str) else ""
+                if not token or voice_done:
+                    continue
+
+                if not in_voice:
+                    search_buf += token
+                    if _VOICE_PREFIX in search_buf:
+                        idx = search_buf.index(_VOICE_PREFIX) + len(_VOICE_PREFIX)
+                        to_process = search_buf[idx:]
+                        search_buf = ""
+                        in_voice = True
+                    else:
+                        continue
+                else:
+                    to_process = token
+
+                for c in to_process:
+                    if escape_next:
+                        escape_next = False
+                        sentence_buf += '"' if c == '"' else c
+                        continue
+                    if c == "\\":
+                        escape_next = True
+                        continue
+                    if c == '"':  # voice 필드 종료
+                        voice_done = True
+                        if sentence_buf.strip():
+                            yield sentence_buf.strip()
+                        sentence_buf = ""
+                        break
+                    sentence_buf += c
+                    if c in ".!?" and sentence_buf.strip():
+                        yield sentence_buf.strip()
+                        sentence_buf = ""
+
+            elif kind == "on_chain_end" and event.get("name") == "LangGraph":
+                messages = event["data"].get("output", {}).get("messages", [])
+                if messages:
+                    new_messages = messages[len(history):]
+                    history.extend(new_messages)
+                    _trim_history(history)
+                    if any(
+                        "주문이 완료되었습니다" in (getattr(m, "content", "") or "")
+                        for m in new_messages
+                    ):
+                        conversation_history[session_id].clear()
+                    full_response = messages[-1].content
+
+    except Exception as e:
+        print(f"[STREAM ERROR] {e}")
+
+    if sentence_buf.strip():
+        yield sentence_buf.strip()
+
+    resp = full_response or ""
+    if isinstance(resp, str) and resp.startswith("```"):
+        resp = resp.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
+    yield ("__done__", (resp, tracker.summary()))
+
 
 if __name__ == "__main__":
     print("임베딩 모델 로드 중...", end=" ", flush=True)
