@@ -35,13 +35,13 @@ MIN_SPEECH_CHUNKS = 6
 _model = None
 
 
-def split_response(text: str) -> tuple[str, str, str, str]:
-    """에이전트 JSON 응답을 파싱해 (voice, screen, action, refined) 반환"""
+def split_response(text: str) -> tuple[str, str, str, str, str, str]:
+    """에이전트 JSON 응답을 파싱해 (voice, screen, action, refined, drink_option, side_option) 반환"""
     try:
         data = AgentResponse.model_validate_json(text)
-        return data.voice, data.screen, data.action, data.refined
+        return data.voice, data.screen, data.action, data.refined, data.drink_option, data.side_option
     except Exception:
-        return text, "", "NONE", ""
+        return text, "", "NONE", "", "", ""
 
 
 def get_model():
@@ -159,7 +159,7 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
 
             t2 = time.time()
 
-            voice, screen, action, refined = split_response(full_response or "")
+            voice, screen, action, refined, drink_option, side_option = split_response(full_response or "")
             full_voice = " ".join(voice_parts) if voice_parts else voice
 
             latency = {
@@ -186,6 +186,8 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                     "voice": full_voice,
                     "screen": screen,
                     "action": action,
+                    "drink_option": drink_option,
+                    "side_option": side_option,
                     "latency": latency,
                 }, ensure_ascii=False)
             )

@@ -19,6 +19,8 @@ class AgentResponse(BaseModel):
     screen: str = ""
     action: str = "NONE"
     refined: str = ""
+    drink_option: str = ""
+    side_option: str = ""
 
     @model_validator(mode="after")
     def clear_screen_for_select_actions(self):
@@ -94,8 +96,14 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
   "voice": "TTS로 읽힐 텍스트",
   "screen": "화면 전용 텍스트 (RECOMMEND 시 메뉴 목록, 그 외 빈 문자열)",
   "action": "NONE",
-  "refined": "STT 교정 후 텍스트 (교정 없으면 원문 그대로)"
+  "refined": "STT 교정 후 텍스트 (교정 없으면 원문 그대로)",
+  "drink_option": "CART_ADD 시 선택된 음료 이름 (세트 아닌 경우 빈 문자열)",
+  "side_option": "CART_ADD 시 선택된 사이드 이름 (세트 아닌 경우 빈 문자열)"
 }
+
+drink_option/side_option 규칙:
+- action이 "CART_ADD"이고 세트 주문인 경우에만 손님이 선택한 음료명·사이드명을 그대로 채워라. (예: "drink_option": "콜라", "side_option": "포테이토")
+- 단품이거나 세트가 아닌 경우 빈 문자열로 두어라.
 
 action 값:
 - "NONE" | "RECOMMEND" | "CART_ADD"
