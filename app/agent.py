@@ -52,7 +52,7 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 [주문 흐름]
 - "인기 있는 거", "제일 많이 팔리는 거", "추천해줘" 등 주문 의도가 있고 메뉴를 특정하지 않은 경우 → search_menu(badge="BEST", limit=1)로 1개만 조회 → get_set_info 호출 → TYPE_SELECT. 이때 voice는 반드시 "{메뉴명}이 가장 인기 있어요. {메뉴 설명 한 줄}. 단품과 세트 중 어떻게 드릴까요?" 형태로 출력.
 - 주문 의도("담아줘", "하나 줘" 등)가 명확하면 search_menu 없이 바로 get_set_info로 세트 가능 여부를 확인하라.
-  - 세트 가능이고 손님이 음료·사이드를 동시에 지정한 경우("세트로 콜라랑 감튀 담아줘" 등) → add_to_cart·upgrade_to_set 호출 금지. TYPE_SELECT/DRINK_SELECT/SIDE_SELECT 없이 바로 voice "리아 불고기 세트(콜라, 포테이토)로 담으시겠습니까?", action "CART_ADD".
+  - 세트 가능이고 손님이 음료·사이드를 동시에 지정한 경우("세트로 콜라랑 감튀 담아줘" 등) → add_to_cart·upgrade_to_set 호출 금지. TYPE_SELECT/DRINK_SELECT/SIDE_SELECT 없이 바로 voice "리아 불고기 세트(콜라, 포테이토)로 담으시겠습니까?", action "CART_ADD". 이때 반드시 손님이 지정한 음료명을 drink_option에, 사이드명을 side_option에 채워라.
   - 세트 가능이고 음료·사이드 미지정 → action "TYPE_SELECT:{버거_menu_id}". (버거_menu_id: get_set_info 반환값 첫 줄의 숫자)
   - 세트 불가: voice에 "담으시겠습니까?" 안내, action을 "CART_ADD"로 설정하라.
 - 여러 메뉴 후보가 있으면 screen에 목록(줄바꿈 구분)을 넣고 action을 "RECOMMEND"로 설정하라. 손님이 선택하면 get_set_info 후 위 흐름대로 진행하라.
@@ -60,7 +60,7 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
   - 손님이 "단품" 선택 → action "CART_ADD", voice에 "담으시겠습니까?" 안내. 툴 호출 금지.
   - 손님이 "세트" 선택 → action "DRINK_SELECT:{버거_menu_id}" (버거_menu_id는 동일 숫자 사용). 툴 호출 금지.
 - 손님이 음료를 선택(DRINK_SELECT 응답)하면 → 툴 호출 없이 바로 action "SIDE_SELECT:{동일_버거_menu_id}" 출력하라. burger_menu_id는 직전 DRINK_SELECT 액션의 숫자 그대로 쓴다.
-- 손님이 사이드를 선택(SIDE_SELECT 응답)하면 → 툴 호출 없이 바로 voice "주문 내역을 확인해주세요. 담으시겠습니까?", action "CART_ADD" 출력하라.
+- 손님이 사이드를 선택(SIDE_SELECT 응답)하면 → 툴 호출 없이 바로 voice "주문 내역을 확인해주세요. 담으시겠습니까?", action "CART_ADD" 출력하라. 이때 반드시 이전 대화에서 손님이 선택한 음료명을 drink_option에, 방금 선택한 사이드명을 side_option에 채워라. 예) drink_option: "제로슈거콜라", side_option: "양념감자"
 - 직전 AI 응답의 action이 "CART_ADD"일 때 손님이 "응", "네", "담아줘" 등으로 확인하면 → add_to_cart 먼저 호출(item_name에 "세트" 포함 금지), 완료 후 세트인 경우만 upgrade_to_set 별도 호출. 두 툴 동시 호출 금지. 완료 후 voice에 "{메뉴명}을 담았습니다. 추가로 필요한 것이 있으신가요?", action "NONE". confirm_order 호출 금지.
 - CART_ADD 취소 → add_to_cart 호출하지 말고 action "NONE".
 - 새 메뉴 주문(메뉴명 단독 언급 포함)이 오면 반드시 get_set_info 후 TYPE_SELECT부터 시작하라. 이전 대화의 세트 선택 이력과 무관하게 독립적으로 진행한다.
@@ -102,8 +102,10 @@ SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이
 }
 
 drink_option/side_option 규칙:
-- action이 "CART_ADD"이고 세트 주문인 경우에만 손님이 선택한 음료명·사이드명을 그대로 채워라. (예: "drink_option": "콜라", "side_option": "포테이토")
-- 단품이거나 세트가 아닌 경우 빈 문자열로 두어라.
+- action이 "CART_ADD"이고 세트 주문인 경우, 반드시 이번 대화에서 손님이 선택한 음료명을 drink_option에, 사이드명을 side_option에 그대로 채워라.
+  - 예) 손님이 "제로콜라"를 선택하고 "포테이토"를 선택했다면: "drink_option": "제로슈거콜라", "side_option": "포테이토"
+  - 음료·사이드를 동시에 지정한 경우("세트로 콜라랑 감튀 담아줘")도 동일하게 채워라.
+- 단품이거나 세트가 아닌 경우 반드시 빈 문자열("")로 두어라.
 
 action 값:
 - "NONE" | "RECOMMEND" | "CART_ADD"
@@ -277,10 +279,8 @@ if __name__ == "__main__":
         response, latency = chat(user_input)
         try:
             parsed = AgentResponse.model_validate_json(response)
-            print(f"도우미: {parsed.voice}")
-            if parsed.screen:
-                print(f"[SCREEN] {parsed.screen}")
-            print(f"[ACTION] {parsed.action}  [REFINED] {parsed.refined}\n")
+            import json as _json
+            print(_json.dumps(parsed.model_dump(), ensure_ascii=False, indent=2))
         except Exception:
-            print(f"도우미: {response}\n")
+            print(response)
         print(f"[LATENCY] llm={latency['llm_total_ms']}ms tool={latency['tool_total_ms']}ms\n")
