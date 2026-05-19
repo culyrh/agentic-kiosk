@@ -162,6 +162,11 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
             voice, screen, action, refined, drink_option, side_option = split_response(full_response or "")
             full_voice = " ".join(voice_parts) if voice_parts else voice
 
+            # structured output 모드에서 스트리밍 토큰이 안 오는 경우 fallback
+            if not voice_parts and voice:
+                audio_bytes = await synthesize_async(voice)
+                await websocket.send_bytes(audio_bytes)
+
             latency = {
                 "stt_ms":   round((t1 - t0) * 1000),
                 "agent_ms": round((t2 - t_agent_start) * 1000),
