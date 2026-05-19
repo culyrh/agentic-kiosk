@@ -357,7 +357,7 @@ def get_menu_info(name: str) -> str:
     return "\n".join(result_lines)
 
 
-def search_menu_logic(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], spicy_level: int = None, limit: int = 3):
+def search_menu_logic(query: str = "", category: str = None, badge: str = None, exclude: list[str] = [], offset: int = 0, exclude_names: list[str] = [], spicy_level: int = None, limit: int = 3):
     exclude = _expand_exclude(exclude) if exclude else []
 
     def build_spicy_clause():
@@ -466,7 +466,7 @@ def search_menu_logic(query: str = "", category: str = None, badge: str = None, 
 
 
 @tool
-def search_menu(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], spicy_level: int = None, limit: int = 3) -> str:
+def search_menu(query: str = "", category: str = None, badge: str = None, exclude: list[str] = [], offset: int = 0, exclude_names: list[str] = [], spicy_level: int = None, limit: int = 3) -> str:
     """사용자 요청에 맞는 메뉴를 검색한다. 메뉴 추천 또는 어떤 메뉴가 있는지 물어볼 때만 사용하라.
 
     - query: 재료, 맛, 특징 등 검색 의도 전체. 유사어도 포함.

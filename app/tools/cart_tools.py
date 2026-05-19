@@ -29,7 +29,7 @@ def _build_search_terms(normalized: str, clean_name: str) -> list[str]:
 
 
 @tool
-def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list = []) -> str:
+def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list[str] = []) -> str:
     """장바구니에 메뉴를 추가한다.
 
     item_name: 손님이 말한 메뉴명. 정확하지 않아도 자동으로 유사 메뉴를 찾아준다.

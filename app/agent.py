@@ -124,7 +124,7 @@ llm = ChatOpenAI(model=os.getenv("LLM_MODEL", "gpt-4o"), temperature=0, model_kw
 
 tools = [search_menu, get_menu_by_price, get_menu_by_nutrition, get_menu_info, get_set_info, add_to_cart, update_cart_quantity, remove_from_cart, upgrade_to_set, downgrade_to_single, view_cart, confirm_order, clear_cart]
 
-agent = create_agent(llm, tools, system_prompt=SYSTEM_PROMPT)
+agent = create_agent(llm, tools, system_prompt=SYSTEM_PROMPT, response_format=AgentResponse)
 
 
 def chat(user_input: str, session_id: str = "default") -> tuple[str, dict]:
