@@ -290,14 +290,30 @@ def voice_similarity(script_id: int, actual_voice: str,
 
 # ─── Phase 1: STT 단독 ───────────────────────────────────────────────────
 def run_stt_phase(recordings: list[dict], model) -> list[dict]:
-    from voice.stt import transcribe
+    import numpy as np
+    from faster_whisper.audio import decode_audio
+    from voice.stt import transcribe_array
+    from voice.vad_silero import CHUNK_SIZE, StreamingVAD
 
     results = []
     for i, rec in enumerate(recordings, 1):
         ref = GROUND_TRUTH.get(rec["id"], "")
         t0 = time.time()
         try:
-            hyp = transcribe(model, str(rec["path"]))
+            audio = decode_audio(str(rec["path"]))
+            vad = StreamingVAD()
+            utterances = []
+            for start in range(0, len(audio), CHUNK_SIZE):
+                chunk = audio[start: start + CHUNK_SIZE]
+                if len(chunk) < CHUNK_SIZE:
+                    chunk = np.pad(chunk, (0, CHUNK_SIZE - len(chunk)))
+                result = vad.feed(chunk)
+                if result is not None:
+                    utterances.append(result)
+            tail = vad.flush()
+            if tail is not None:
+                utterances.append(tail)
+            hyp = transcribe_array(model, np.concatenate(utterances)) if utterances else ""
         except Exception as e:
             hyp = ""
             print(f"  [ERROR] {rec['path'].name}: {e}")
