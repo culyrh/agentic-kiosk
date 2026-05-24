@@ -29,7 +29,7 @@ def _build_search_terms(normalized: str, clean_name: str) -> list[str]:
 
 
 @tool
-def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list = []) -> str:
+def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list[str] = []) -> str:
     """장바구니에 메뉴를 추가한다.
 
     item_name: 손님이 말한 메뉴명. 정확하지 않아도 자동으로 유사 메뉴를 찾아준다.
@@ -42,8 +42,9 @@ def add_to_cart(item_name: str, quantity: int = 1, customer_allergies: list = []
     conn.create_function("REPLACE_SPACE", 1, lambda s: s.replace(" ", "") if s else s)
     cur = conn.cursor()
 
-    # [BEST], [NEW] 등 badge 태그 제거 후 공백 정규화.
+    # [BEST], [NEW] 등 badge 태그 제거, "세트" 단어 제거 (세트는 upgrade_to_set으로 처리)
     clean_name = re.sub(r'\[.*?\]', '', item_name).strip()
+    clean_name = re.sub(r'\s*세트\s*', ' ', clean_name).strip()
     normalized = clean_name.replace(" ", "")
 
     # 1차: 완전 일치.
@@ -414,8 +415,9 @@ def update_cart_quantity(item_name: str, quantity: int) -> str:
 @tool
 def confirm_order(payment_method: str = "카드") -> str:
     """장바구니를 주문 완료 처리한다.
-    손님이 "주문할게요", "결제할게요", "이걸로 할게요" 등을 말할 때 사용하라.
-    payment_method: 결제 수단. 기본값 카드. 카드/모바일 중 하나.
+    반드시 손님이 결제 수단(카드/모바일)을 명확히 선택한 후에만 호출하라.
+    "담아줘", "응", "네" 등 장바구니 담기 확인은 add_to_cart를 사용하라. 이 툴을 쓰지 마라.
+    payment_method: 결제 수단. 카드/모바일 중 하나.
     """
     if payment_method not in ("카드", "모바일"):
         return "결제 수단은 카드 또는 모바일 중 하나를 선택해 주세요."
@@ -515,22 +517,31 @@ def upgrade_to_set(burger_name: str, drink_option: str, side_option: str) -> str
 
     cart_id, burger_name_actual, set_price = row
 
-    # 선택한 음료/사이드 추가금액 반영
+    # 선택한 음료/사이드의 option_id와 추가금액 조회
     total_price = set_price
+    drink_option_id = None
+    side_option_id = None
+
     for option_name, option_type in [(drink_option, '드링크'), (side_option, '사이드')]:
         opt_normalized = option_name.replace(" ", "")
         cur.execute("""
-            SELECT o.extra_price FROM options o
+            SELECT o.option_id, o.extra_price FROM options o
             JOIN menu m ON o.menu_id = m.id
             WHERE REPLACE_SPACE(m.name) LIKE ? AND o.option_type = ?
         """, (f"%{opt_normalized}%", option_type))
-        ep_row = cur.fetchone()
-        if ep_row and ep_row[0]:
-            total_price += ep_row[0]
+        row = cur.fetchone()
+        if row:
+            option_id, extra_price = row
+            if option_type == '드링크':
+                drink_option_id = option_id
+            else:
+                side_option_id = option_id
+            if extra_price:
+                total_price += extra_price
 
     cur.execute(
         "UPDATE cart SET is_set=1, drink_option=?, side_option=?, unit_price=? WHERE cart_id=?",
-        (drink_option, side_option, total_price, cart_id)
+        (drink_option_id, side_option_id, total_price, cart_id)
     )
     conn.commit()
     conn.close()

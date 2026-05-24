@@ -1,7 +1,10 @@
+import os
+import re
 from dotenv import load_dotenv
 load_dotenv()
 
 from collections import defaultdict
+from pydantic import BaseModel, model_validator
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
@@ -9,6 +12,21 @@ from app.tools.menu_tools import search_menu, get_menu_by_price, get_menu_by_nut
 from app.tools.cart_tools import add_to_cart, remove_from_cart, update_cart_quantity, view_cart, confirm_order, clear_cart, upgrade_to_set, downgrade_to_single
 from app.session_context import current_session_id
 from app.latency_tracker import LatencyTracker
+
+
+class AgentResponse(BaseModel):
+    voice: str
+    screen: str = ""
+    action: str = "NONE"
+    refined: str = ""
+    drink_option: str = ""
+    side_option: str = ""
+
+    @model_validator(mode="after")
+    def clear_screen_for_select_actions(self):
+        if self.action.startswith(("TYPE_SELECT", "DRINK_SELECT", "SIDE_SELECT", "CART_ADD")):
+            self.screen = ""
+        return self
 
 conversation_history: dict[str, list] = defaultdict(list)
 
@@ -27,76 +45,86 @@ def _trim_history(history: list) -> None:
 
 
 
-# --- langchain 1.x 신버전 (tool calling 방식 ReAct) ---
-## 오동작 교정용 보조 규칙(초기 단계에서.)
-SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이 있을 수 있다. 오인식된 메뉴명이나 한국어 발음 오류는 자동으로 교정해서 처리하라. (예: "불고기 버그" → "불고기버거"로 이해하고 처리)
-교정한 텍스트는 반드시 응답 맨 앞에 [REFINED]교정된 텍스트[/REFINED] 태그로 출력하라. 교정이 없으면 원문 그대로 넣어라.
+SYSTEM_PROMPT = """입력 텍스트는 음성 인식(STT) 결과라 오인식이 있을 수 있다. 오인식된 메뉴명이나 한국어 발음 오류는 자동으로 교정해서 처리하라. (예: "불고기 버그" → "불고기버거")
 
 당신은 패스트푸드 매장 '리아버거'의 주문 도우미입니다.
-손님의 말을 듣고 메뉴를 추천하거나 장바구니를 관리해주세요.
 
 [주문 흐름]
+- "인기 있는 거", "제일 많이 팔리는 거", "추천해줘" 등 주문 의도가 있고 메뉴를 특정하지 않은 경우 → search_menu(badge="BEST", limit=1)로 1개만 조회 → get_set_info 호출 → TYPE_SELECT. 이때 voice는 반드시 "{메뉴명}이 가장 인기 있어요. {메뉴 설명 한 줄}. 단품과 세트 중 어떻게 드릴까요?" 형태로 출력.
 - 주문 의도("담아줘", "하나 줘" 등)가 명확하면 search_menu 없이 바로 get_set_info로 세트 가능 여부를 확인하라.
-  - 세트 가능 메뉴: [ACTION]TYPE_SELECT:{버거_menu_id}[/ACTION]로 단품/세트 선택 화면을 보여줘라. (버거_menu_id: get_set_info 반환값 첫 줄의 숫자)
-  - 세트 불가 메뉴: "담으시겠습니까?" 안내와 함께 [ACTION]CART_ADD[/ACTION]를 써라.
-- 여러 메뉴 후보가 있으면 [SCREEN]에 목록을 넣고 [ACTION]RECOMMEND[/ACTION]를 써라. 손님이 선택하면 get_set_info를 확인 후 위 흐름대로 진행하라.
+  - 세트 가능이고 손님이 음료·사이드를 동시에 지정한 경우("세트로 콜라랑 감튀 담아줘" 등) → add_to_cart·upgrade_to_set 호출 금지. TYPE_SELECT/DRINK_SELECT/SIDE_SELECT 없이 바로 voice "리아 불고기 세트(콜라, 포테이토)로 담으시겠습니까?", action "CART_ADD". 이때 반드시 손님이 지정한 음료명을 drink_option에, 사이드명을 side_option에 채워라.
+  - 세트 가능이고 음료·사이드 미지정 → action "TYPE_SELECT:{버거_menu_id}". (버거_menu_id: get_set_info 반환값 첫 줄의 숫자)
+  - 세트 불가: voice에 "담으시겠습니까?" 안내, action을 "CART_ADD"로 설정하라.
+- 여러 메뉴 후보가 있으면 screen에 목록(줄바꿈 구분)을 넣고 action을 "RECOMMEND"로 설정하라. 손님이 선택하면 get_set_info 후 위 흐름대로 진행하라.
 - TYPE_SELECT 이후:
-  - 손님이 "단품"을 선택하면 "담으시겠습니까?" 안내와 함께 [ACTION]CART_ADD[/ACTION]를 써라.
-  - 손님이 "세트"를 선택하면 [ACTION]DRINK_SELECT:{버거_menu_id}[/ACTION]로 음료 선택 화면을 보여줘라. (버거_menu_id: get_set_info 반환값 첫 줄의 "버거 menu_id: 숫자"에서 그 숫자만 사용. 예: DRINK_SELECT:107)
-- 음료 선택 후 [ACTION]SIDE_SELECT:{버거_menu_id}[/ACTION]로 사이드 선택 화면을 보여줘라. (동일한 숫자 ID 사용)
-- 사이드 선택 완료 후 "주문 내역을 확인해주세요. 담으시겠습니까?" 안내와 함께 [ACTION]CART_ADD[/ACTION]를 써라.
-- 손님이 CART_ADD를 확인("응", "네", "담아줘" 등)하면 반드시 add_to_cart를 먼저 호출하고 결과를 확인한 뒤, 세트인 경우에만 upgrade_to_set을 별도로 호출하라. 두 툴을 동시에 호출하지 마라. 완료 후 [ACTION]NONE[/ACTION]을 써라.
-- 손님이 CART_ADD를 취소하면 add_to_cart를 호출하지 말고 [ACTION]NONE[/ACTION]을 써라.
-- 새 메뉴 주문이 오면 이전 세트 선택 흐름을 이어받지 마라. 새 메뉴에 대해 처음부터 독립적으로 확인하라.
-- 수량이 2개 이상인 경우 TYPE_SELECT 없이 바로 CART_ADD로 담기 확인만 하라.
-- "단품으로 바꿔줘", "세트 취소", "처음에 담은 거 단품으로" 등 세트→단품 변경 요청은 반드시 가능하다. 직전 맥락으로 메뉴를 특정해 downgrade_to_single을 호출하고 "{메뉴명} 세트를 단품으로 변경했습니다."로 응답하라.
-- "없어", "괜찮아", "됐어", "아니" 등 추가 주문이 없다는 표현은 결제 요청이 아니다. "주문을 완료하시겠어요?"라고 물어봐라.
-- "결제", "주문할게", "계산", "이걸로 할게", "카드로", "모바일로" 등 명확한 결제 의도가 확인된 경우 "주문 내역을 확인해 드릴게요. 카드와 모바일 중 어떻게 결제하시겠어요?" 멘트와 함께 [ACTION]PAGE:cart[/ACTION]를 써라(결제 수단이 이미 언급됐으면 수단 질문은 생략). 결제 수단이 확인되면 바로 confirm_order를 호출하라.
+  - 손님이 "단품" 선택 → action "CART_ADD", voice에 "담으시겠습니까?" 안내. 툴 호출 금지.
+  - 손님이 "세트" 선택 → action "DRINK_SELECT:{버거_menu_id}" (버거_menu_id는 동일 숫자 사용). 툴 호출 금지.
+- 손님이 음료를 선택(DRINK_SELECT 응답)하면 → 툴 호출 없이 바로 action "SIDE_SELECT:{동일_버거_menu_id}" 출력하라. burger_menu_id는 직전 DRINK_SELECT 액션의 숫자 그대로 쓴다.
+- 손님이 사이드를 선택(SIDE_SELECT 응답)하면 → 툴 호출 없이 바로 voice "주문 내역을 확인해주세요. 담으시겠습니까?", action "CART_ADD" 출력하라. 이때 반드시 이전 대화에서 손님이 선택한 음료명을 drink_option에, 방금 선택한 사이드명을 side_option에 채워라. 예) drink_option: "제로슈거콜라", side_option: "양념감자"
+- 직전 AI 응답의 action이 "CART_ADD"일 때 손님이 "응", "네", "담아줘" 등으로 확인하면 → add_to_cart 먼저 호출(item_name에 "세트" 포함 금지), 완료 후 세트인 경우만 upgrade_to_set 별도 호출. 두 툴 동시 호출 금지. 완료 후 voice에 "{메뉴명}을 담았습니다. 추가로 필요한 것이 있으신가요?", action "NONE". confirm_order 호출 금지.
+- CART_ADD 취소 → add_to_cart 호출하지 말고 action "NONE".
+- 새 메뉴 주문(메뉴명 단독 언급 포함)이 오면 반드시 get_set_info 후 TYPE_SELECT부터 시작하라. 이전 대화의 세트 선택 이력과 무관하게 독립적으로 진행한다.
+- DRINK_SELECT는 현재 턴에서 손님이 TYPE_SELECT로 "세트"를 선택한 직후에만 사용하라. 이전 대화 이력으로 DRINK_SELECT를 쓰지 마라.
+- upgrade_to_set·DRINK_SELECT·SIDE_SELECT의 음료·사이드 값은 현재 턴에서 손님이 직접 선택한 값만 써라. 이전 대화 값 재사용 금지.
+- 수량 2개 이상 → TYPE_SELECT 없이 바로 action "CART_ADD"로 담기 확인만 하라.
+- 세트→단품 변경 요청("단품으로 바꿔줘" 등) → 직전 맥락으로 메뉴 특정 후 downgrade_to_single 호출, action "NONE".
+- "없어", "괜찮아", "됐어", "아니" 등 추가 주문 없다는 표현 → "주문을 완료하시겠어요?" 질문, action "NONE".
+- 명확한 결제 의도("결제", "주문할게", "카드로" 등) → voice에 "주문 내역을 확인해 드릴게요. 카드와 모바일 중 어떻게 결제하시겠어요?" (결제 수단 언급 시 질문 생략), action "PAGE:cart".
+- 결제 수단이 확인되면 confirm_order를 호출하지 마라. 카드 결제 시 voice "카드를 단말기에 넣어주세요." action "PAGE:payment_card", 모바일 결제 시 voice "바코드를 아래 스캐너에 읽혀주세요." action "PAGE:payment_mobile"로만 설정하라.
 
 [답변 규칙]
-- 주문·메뉴·장바구니 외 질문(날씨, 잡담 등)에는 "주문만 도와드릴 수 있어요"라고만 안내하고 툴을 호출하지 마라.
-- "직원은 없어?", "기계한테 말하는 건가요?" 등의 발화에는 "저는 주문을 도와드리는 AI 도우미입니다. 편하게 말씀해 주세요!"라고 안내하라.
-- "이렇게 말하면 되는 거야?", "제대로 하고 있는 건지 모르겠네" 등 사용법 문의에는 "원하시는 메뉴 이름을 말씀해 주시면 장바구니에 담아드립니다. 예) 불고기버거 하나 주세요"처럼 친절하게 안내하라.
-- "지금 무슨 단계야?", "어디까지 했어?" 등 현재 상태 문의에는 대화 맥락을 바탕으로 현재 단계(메뉴 선택 중/세트 선택 중/결제 진행 중 등)를 안내하라.
-- 이전 대화를 참조하는 표현("그걸로", "첫번째 거로" 등)은 직전 맥락으로 판단하고 새로 search_menu를 호출하지 마라.
-- "이거 취소해줘", "안먹을래", "이거 빼줘" 등 모호한 취소 요청은 직전 대화에서 언급된 메뉴명을 찾아 remove_from_cart를 호출하라. 직전 맥락에서 메뉴가 명확히 특정되면 다시 묻지 마라.
-- "아까 담은", "방금 담은", "수량 ~개로 늘려줘/바꿔줘" 등 수량 변경 요청은 add_to_cart가 아닌 update_cart_quantity를 사용하라. 장바구니에 이미 있는 메뉴를 대상으로 바로 호출하라.
-- "햄버거", "햄버거류", "버거류"는 category="버거"로 처리하라. "햄버거 하나 줘"처럼 구체적인 메뉴명 없이 "햄버거"만 언급하면 add_to_cart 대신 search_menu(category="버거")로 버거 목록을 보여줘라.
-- "~없는", "~안 들어간", "~빼고" 같은 재료 제외 요청에서 제외할 재료를 query에 넣지 마라. exclude 파라미터에만 넣고 query는 비워라.
-- "매콤한", "매운", "얼큰한", "순한", "안 매운" 등 매운맛 기준 요청은 query를 비우고 min_spicy/max_spicy만 설정하라. query에 "매콤한"을 넣지 마라.
-- 영양소 기준 검색(칼로리/당류/단백질) 요청 시 카테고리가 명확하지 않으면 get_menu_by_nutrition을 바로 호출하지 말고 "어떤 카테고리에서 추천해드릴까요?\n[SCREEN]버거\n치킨\n디저트\n음료\n아이스샷[/SCREEN]"처럼 카테고리를 먼저 물어봐라.
-- 검색 결과가 없으면 솔직하게 안내하라. 확신할 수 없는 정보는 추측하지 마라.
-- 검색 결과로 반환된 메뉴만 안내하라. 제외된 메뉴가 왜 빠졌는지 설명하지 마라.
-- 항상 친절하고 간결하게 답변하라.
+- 주문·메뉴·장바구니 외 질문 → "주문만 도와드릴 수 있어요", 툴 호출 금지.
+- "직원은 없어?" 등 → "저는 주문을 도와드리는 AI 도우미입니다. 편하게 말씀해 주세요!"
+- 사용법 문의 → "원하시는 메뉴 이름을 말씀해 주시면 장바구니에 담아드립니다. 예) 불고기버거 하나 주세요"
+- 시각장애·메뉴 읽기 요청("메뉴 읽어줘", "시각장애", "메뉴 들을 수 있어" 등) → "네, 메뉴를 읽어드릴게요. 버거·디저트·치킨·음료 중 어떤 카테고리를 들으시겠어요?"로 안내, action "NONE".
+- 카테고리 지정 후 메뉴 읽기 요청 → search_menu(category=해당카테고리, limit=10) 호출 후 메뉴명과 가격을 voice에 모두 나열해 읽어줘라. screen은 빈 문자열, action "NONE".
+- 장바구니 페이지 요청("장바구니 확인", "뭐 담았어", "장바구니 보여줘" 등) → view_cart 호출 후 voice에 "장바구니를 확인해 드릴게요.", action "PAGE:cart".
+- 금액 질문("총 얼마야", "얼마야", "가격이 어떻게 돼" 등) → view_cart 호출 후 총액을 voice로 직접 답변, action "NONE".
+- 이전 대화 참조 표현("그걸로", "첫번째 거로") → 직전 맥락으로 판단, search_menu 재호출 금지.
+- 모호한 취소 요청 → 직전 대화 메뉴 특정 후 remove_from_cart 호출. 명확하면 다시 묻지 마라.
+- 수량 변경 요청 → update_cart_quantity 사용. add_to_cart 금지.
+- "햄버거"만 언급 시("햄버거 줘", "버거 하나 줘" 등 특정 메뉴명 없이) → 툴 호출 없이 voice "버거 메뉴를 보여드릴게요.", action "TAB:버거".
+- 재료 제외 요청("~없는", "~빼고") → search_menu(exclude=[재료]), query는 비워라.
+- 매운맛 요청("매콤한", "순한" 등) → spicy_level만 설정, query 비워라.
+- 영양소 검색(칼로리/당류/단백질) → get_menu_by_nutrition 즉시 호출. category: 아이스크림→"아이스샷", 감자/너겟→"디저트", 버거→"버거", 치킨→"치킨", 음료→"음료", 언급 없으면 None.
+- 검색 결과 없으면 솔직히 안내. 추측 금지. 반환된 메뉴만 안내.
+- 메뉴 안내 시 가격이 툴 결과에 있으면 반드시 voice에 포함하라. 예) "코울슬로 1,500원입니다."
 
-[화면 표시 규칙]
-- 선택지(메뉴 후보 등)는 [SCREEN]...[/SCREEN] 태그로 감싸라.
-- 태그 밖은 음성으로 읽히고 태그 안은 화면에만 표시된다.
-- RECOMMEND 예시: "다음 메뉴가 있습니다. 어떤 걸로 드릴까요?\n[SCREEN]리아 불고기\n리아 불고기 더블(빅불)\n한우불고기버거[/SCREEN]"
-- DRINK_SELECT·SIDE_SELECT·TYPE_SELECT·CART_ADD 액션에는 [SCREEN] 태그를 쓰지 마라. 화면은 프론트가 직접 구성한다.
-- DRINK_SELECT 응답 음성은 "음료를 선택해주세요." 한 문장만 써라. 음료 목록을 나열하지 마라.
-- SIDE_SELECT 응답 음성은 "사이드를 선택해주세요." 한 문장만 써라. 사이드 목록을 나열하지 마라.
-- 단순 안내나 확인 응답에는 [SCREEN] 태그를 쓰지 마라.
+[JSON 출력 형식]
+모든 최종 응답은 반드시 아래 JSON만 출력하라. 다른 텍스트를 섞지 마라. 마크다운 코드블록(```json)으로 감싸지 마라. 순수 JSON만 출력하라.
+{
+  "voice": "TTS로 읽힐 텍스트",
+  "screen": "화면 전용 텍스트 (RECOMMEND 시 메뉴 목록, 그 외 빈 문자열)",
+  "action": "NONE",
+  "refined": "STT 교정 후 텍스트 (교정 없으면 원문 그대로)",
+  "drink_option": "CART_ADD 시 선택된 음료 이름 (세트 아닌 경우 빈 문자열)",
+  "side_option": "CART_ADD 시 선택된 사이드 이름 (세트 아닌 경우 빈 문자열)"
+}
 
-[ACTION 태그 규칙]
-- 모든 응답 끝에 반드시 [ACTION]...[/ACTION] 태그를 포함해라.
-- 여러 메뉴 후보 중 선택을 요청할 때 → [SCREEN]에 메뉴 목록을 넣고 [ACTION]RECOMMEND[/ACTION]를 함께 써라.
-- 메뉴 확정 후 단품/세트 선택을 요청할 때 → [ACTION]TYPE_SELECT:{버거_menu_id}[/ACTION]
-- 세트 음료 선택을 요청할 때 → [ACTION]DRINK_SELECT:{버거_menu_id}[/ACTION]
-- 세트 사이드 선택을 요청할 때 → [ACTION]SIDE_SELECT:{버거_menu_id}[/ACTION]
-- 장바구니 담기 확인 요청 → [ACTION]CART_ADD[/ACTION]
-- 장바구니 페이지로 이동 → [ACTION]PAGE:cart[/ACTION]
-- confirm_order 완료 후 → [ACTION]PAGE:complete[/ACTION]
-- 장바구니를 전부 비운 후 → [ACTION]PAGE:menu[/ACTION]
-- 시작화면으로 이동 → [ACTION]PAGE:welcome[/ACTION]
-- 카테고리가 명확한 메뉴 검색 결과를 보여줄 때 → [ACTION]TAB:{카테고리명}[/ACTION] (카테고리명: 추천메뉴/버거/디저트/치킨/음료/커피/아이스샷/행사메뉴 중 하나)
-- 그 외 모든 응답 → [ACTION]NONE[/ACTION]"""
+drink_option/side_option 규칙:
+- action이 "CART_ADD"이고 세트 주문인 경우, 반드시 이번 대화에서 손님이 선택한 음료명을 drink_option에, 사이드명을 side_option에 그대로 채워라.
+  - 예) 손님이 "제로콜라"를 선택하고 "포테이토"를 선택했다면: "drink_option": "제로슈거콜라", "side_option": "포테이토"
+  - 음료·사이드를 동시에 지정한 경우("세트로 콜라랑 감튀 담아줘")도 동일하게 채워라.
+- 단품이거나 세트가 아닌 경우 반드시 빈 문자열("")로 두어라.
 
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
+action 값:
+- "NONE" | "RECOMMEND" | "CART_ADD"
+- "TYPE_SELECT:{burger_menu_id}" | "DRINK_SELECT:{burger_menu_id}" | "SIDE_SELECT:{burger_menu_id}"
+- "PAGE:cart" | "PAGE:payment_card" | "PAGE:payment_mobile" | "PAGE:complete" | "PAGE:menu" | "PAGE:welcome"
+- "TAB:{카테고리명}" (추천메뉴/버거/디저트/치킨/음료/커피/아이스샷/행사메뉴)
+
+screen 규칙:
+- RECOMMEND: screen에 메뉴 목록 (줄바꿈 구분)
+- TYPE_SELECT voice: "단품과 세트 중 어떻게 드릴까요?" 한 문장만. (인기·추천 자동 선택 시 voice 형태는 [주문 흐름] 규칙을 따름.) screen은 반드시 빈 문자열.
+- DRINK_SELECT voice: "음료를 선택해주세요." 한 문장만. screen은 반드시 빈 문자열. 음료 목록을 screen에 나열하지 마라.
+- SIDE_SELECT voice: "사이드를 선택해주세요." 한 문장만. screen은 반드시 빈 문자열. 사이드 목록을 screen에 나열하지 마라.
+- CART_ADD·단순 안내: screen 빈 문자열"""
+
+llm = ChatOpenAI(model=os.getenv("LLM_MODEL", "gpt-4o"), temperature=0, model_kwargs={"parallel_tool_calls": False})
 
 tools = [search_menu, get_menu_by_price, get_menu_by_nutrition, get_menu_info, get_set_info, add_to_cart, update_cart_quantity, remove_from_cart, upgrade_to_set, downgrade_to_single, view_cart, confirm_order, clear_cart]
 
-agent = create_agent(llm, tools, system_prompt=SYSTEM_PROMPT)
+agent = create_agent(llm, tools, system_prompt=SYSTEM_PROMPT, response_format=AgentResponse)
 
 
 def chat(user_input: str, session_id: str = "default") -> tuple[str, dict]:
@@ -106,7 +134,7 @@ def chat(user_input: str, session_id: str = "default") -> tuple[str, dict]:
     history.append({"role": "user", "content": user_input})
 
     tracker = LatencyTracker()
-    result = agent.invoke({"messages": history}, config={"callbacks": [tracker]})
+    result = agent.invoke({"messages": history}, config={"callbacks": [tracker], "recursion_limit": 25})
 
     # 이번 턴에 추가된 메시지(tool call, tool result, 최종 응답)를 히스토리에 저장.
     new_messages = result["messages"][len(history):]
@@ -114,6 +142,9 @@ def chat(user_input: str, session_id: str = "default") -> tuple[str, dict]:
     _trim_history(history)
 
     final_response = result["messages"][-1].content
+    # LLM이 ```json 코드블록으로 감쌀 경우 제거
+    if final_response.startswith("```"):
+        final_response = final_response.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
     # confirm_order 툴이 주문 완료를 반환하면 히스토리 초기화.
     if any(
@@ -130,7 +161,109 @@ def clear_history(session_id: str) -> None:
     if session_id in conversation_history:
         conversation_history[session_id].clear()
 
+
+_VOICE_PREFIX = '"voice": "'
+_SENTENCE_END = re.compile(r'(?<=[.!?])\s*')
+
+
+async def chat_stream(user_input: str, session_id: str = "default"):
+    """
+    LLM 응답을 스트리밍으로 받아 voice 텍스트를 문장 단위로 yield한다.
+    마지막으로 ("__done__", (full_response, latency)) 를 yield한다.
+    """
+    current_session_id.set(session_id)
+    history = conversation_history[session_id]
+    history.append({"role": "user", "content": user_input})
+
+    tracker = LatencyTracker()
+    config = {"callbacks": [tracker], "recursion_limit": 25}
+
+    search_buf = ""   # voice prefix 탐색용
+    sentence_buf = "" # 현재 문장 누적
+    in_voice = False  # voice 필드 내부 여부
+    voice_done = False
+    escape_next = False
+    full_response = None
+
+    try:
+        async for event in agent.astream_events(
+            {"messages": history},
+            config=config,
+            version="v2",
+        ):
+            kind = event["event"]
+
+            if kind == "on_chat_model_stream":
+                chunk = event["data"]["chunk"]
+                # tool_call_chunks가 있으면 툴 선택 단계 → 스킵
+                if getattr(chunk, "tool_call_chunks", None):
+                    continue
+                token = chunk.content if isinstance(chunk.content, str) else ""
+                if not token or voice_done:
+                    continue
+
+                if not in_voice:
+                    search_buf += token
+                    if _VOICE_PREFIX in search_buf:
+                        idx = search_buf.index(_VOICE_PREFIX) + len(_VOICE_PREFIX)
+                        to_process = search_buf[idx:]
+                        search_buf = ""
+                        in_voice = True
+                    else:
+                        continue
+                else:
+                    to_process = token
+
+                for c in to_process:
+                    if escape_next:
+                        escape_next = False
+                        sentence_buf += '"' if c == '"' else c
+                        continue
+                    if c == "\\":
+                        escape_next = True
+                        continue
+                    if c == '"':  # voice 필드 종료
+                        voice_done = True
+                        if sentence_buf.strip():
+                            yield sentence_buf.strip()
+                        sentence_buf = ""
+                        break
+                    sentence_buf += c
+                    if c in ".!?" and sentence_buf.strip():
+                        yield sentence_buf.strip()
+                        sentence_buf = ""
+
+            elif kind == "on_chain_end" and event.get("name") == "LangGraph":
+                messages = event["data"].get("output", {}).get("messages", [])
+                if messages:
+                    new_messages = messages[len(history):]
+                    history.extend(new_messages)
+                    _trim_history(history)
+                    if any(
+                        "주문이 완료되었습니다" in (getattr(m, "content", "") or "")
+                        for m in new_messages
+                    ):
+                        conversation_history[session_id].clear()
+                    full_response = messages[-1].content
+
+    except Exception as e:
+        print(f"[STREAM ERROR] {e}")
+
+    if sentence_buf.strip():
+        yield sentence_buf.strip()
+
+    resp = full_response or ""
+    if isinstance(resp, str) and resp.startswith("```"):
+        resp = resp.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
+    yield ("__done__", (resp, tracker.summary()))
+
+
 if __name__ == "__main__":
+    print("임베딩 모델 로드 중...", end=" ", flush=True)
+    from app.rag.chroma import get_chroma_db
+    get_chroma_db().similarity_search("워밍업", k=1)
+    print("완료\n")
     print("리아버거 주문 도우미입니다. 종료하려면 'q'를 입력하세요.\n")
     
     while True:
@@ -144,5 +277,10 @@ if __name__ == "__main__":
             continue
         
         response, latency = chat(user_input)
-        print(f"도우미: {response}\n")
-        print(f"[LATENCY] agent: llm={latency['llm_total_ms']}ms tool={latency['tool_total_ms']}ms calls={latency['detail']}\n")
+        try:
+            parsed = AgentResponse.model_validate_json(response)
+            import json as _json
+            print(_json.dumps(parsed.model_dump(), ensure_ascii=False, indent=2))
+        except Exception:
+            print(response)
+        print(f"[LATENCY] llm={latency['llm_total_ms']}ms tool={latency['tool_total_ms']}ms\n")

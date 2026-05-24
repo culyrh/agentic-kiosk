@@ -34,8 +34,8 @@ def contains_blocked_keyword(text: str) -> bool:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    get_model()       # 서버 시작 시 Whisper 모델 미리 로드
-    get_chroma_db()   # 서버 시작 시 ChromaDB 임베딩 모델 미리 로드
+    get_model()                                        # Whisper 모델 미리 로드
+    get_chroma_db().similarity_search("워밍업", k=1)  # ChromaDB 벡터 인덱스까지 완전 워밍업
     yield
 
 
