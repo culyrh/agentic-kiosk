@@ -13,15 +13,14 @@ from faster_whisper import WhisperModel
 def load_model(model_size: str = "medium", device: str = "cpu") -> WhisperModel:
     """
     Whisper 모델을 로드합니다.
-    처음 실행 시 허깅페이스에서 자동 다운로드 (medium 기준 약 1.5GB).
 
     Args:
-        model_size: "small" / "medium" / "large-v3"
-        device: "cpu" 또는 "cuda" (GPU 있을 때)
+        model_size: "small" / "medium" / "large-v3" 또는 로컬 경로 (예: "models/whisper-small-ko-zeroth")
+        device: "cpu" 또는 "cuda"
     """
     compute_type = "float16" if device == "cuda" else "int8"
 
-    print(f"[STT] 모델 로딩: whisper-{model_size} / {device} / {compute_type}")
+    print(f"[STT] 모델 로딩: {model_size} / {device} / {compute_type}")
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
     print("[STT] 모델 로딩 완료")
     return model
