@@ -1,21 +1,41 @@
 import asyncio
 import io
-import edge_tts
+import wave
 
-VOICE = "ko-KR-SunHiNeural"  # 한국어 여자 목소리
-RATE = "+10%"                 # 말하는 속도 (+는 빠르게, -는 느리게)
+import numpy as np
+
+_VOICE_NAME = "F1"
+_LANG = "ko"
+
+_tts = None
+_style = None
 
 
-async def synthesize_async(text: str) -> bytes:
-    """텍스트를 MP3 오디오 바이트로 변환 (비동기)"""
-    communicate = edge_tts.Communicate(text, VOICE, rate=RATE)
-    buf = io.BytesIO()
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            buf.write(chunk["data"])
-    return buf.getvalue()
+def _get_tts():
+    global _tts, _style
+    if _tts is None:
+        from supertonic import TTS
+        _tts = TTS(model="supertonic-3")
+        _style = _tts.get_voice_style(_VOICE_NAME)
+    return _tts, _style
 
 
 def synthesize(text: str) -> bytes:
-    """텍스트를 MP3 오디오 바이트로 변환 (동기 래퍼)"""
-    return asyncio.run(synthesize_async(text))
+    tts, style = _get_tts()
+    wav_arr, _ = tts.synthesize(text, style, lang=_LANG)
+    # wav_arr: float32 ndarray shape (1, N) in range [-1, 1]
+    samples = wav_arr[0]
+    pcm = np.clip(samples, -1.0, 1.0)
+    pcm_int16 = (pcm * 32767).astype(np.int16)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(tts.sample_rate)
+        wf.writeframes(pcm_int16.tobytes())
+    buf.seek(0)
+    return buf.read()
+
+
+async def synthesize_async(text: str) -> bytes:
+    return await asyncio.to_thread(synthesize, text)
