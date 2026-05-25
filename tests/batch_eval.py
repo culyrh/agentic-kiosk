@@ -514,7 +514,7 @@ def main():
     parser = argparse.ArgumentParser(description="배치 평가 스크립트")
     parser.add_argument("--audio-dir",   default="tests/recordings")
     parser.add_argument("--phase",       choices=["stt", "pipeline", "all"], default="stt")
-    parser.add_argument("--model-size",  default="small")
+    parser.add_argument("--model-size",  default="Qwen/Qwen3-ASR-0.6B")
     parser.add_argument("--out-dir",     default="tests/results")
     parser.add_argument("--speaker",     help="특정 화자만 (sh/sb/br/hn)")
     parser.add_argument("--env",         help="특정 환경만 (quiet/noisy)")

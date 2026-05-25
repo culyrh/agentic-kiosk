@@ -40,7 +40,7 @@ def split_response(text: str) -> tuple[str, str, str, str, str, str]:
 def get_model():
     global _model
     if _model is None:
-        _model = load_model(model_size="small", device="cpu")
+        _model = load_model(device="cpu")
     return _model
 
 

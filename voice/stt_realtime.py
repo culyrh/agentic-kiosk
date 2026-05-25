@@ -107,7 +107,7 @@ def _make_api_callback(api_url: str) -> Callable[[str], None]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="small", choices=["tiny", "small", "medium", "large-v3"])
+    parser.add_argument("--model", default="Qwen/Qwen3-ASR-0.6B")
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
     parser.add_argument("--language", default="ko")
     parser.add_argument("--threshold", type=float, default=0.5,

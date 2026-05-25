@@ -19,3 +19,5 @@ test_embedding.py
 test_flow.py
 my_prompt_changes.txt
 test_flow_result.txt
+
+/models/
