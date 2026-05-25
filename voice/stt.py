@@ -14,8 +14,26 @@ MODEL_ID = "Qwen/Qwen3-ASR-0.6B"
 
 _LANG_MAP = {"ko": "Korean", "en": "English", "zh": "Chinese", "ja": "Japanese"}
 
+_TRIM_FRAME = 512
+_TRIM_THRESHOLD = 0.01
+_TRIM_PAD = 1600
+
+
 def _lang(code: str) -> str:
     return _LANG_MAP.get(code.lower(), code)
+
+
+def _trim_silence(audio: np.ndarray) -> np.ndarray:
+    energies = np.array([
+        np.sqrt(np.mean(audio[i: i + _TRIM_FRAME] ** 2))
+        for i in range(0, len(audio), _TRIM_FRAME)
+    ])
+    voiced = np.where(energies > _TRIM_THRESHOLD)[0]
+    if len(voiced) == 0:
+        return audio
+    start = max(0, voiced[0] * _TRIM_FRAME - _TRIM_PAD)
+    end = min(len(audio), (voiced[-1] + 1) * _TRIM_FRAME + _TRIM_PAD)
+    return audio[start:end]
 
 
 def load_model(model_size: str = MODEL_ID, device: str = "cpu"):
@@ -46,7 +64,9 @@ def transcribe(model, audio_path: str, language: str = "ko") -> str:
     Returns:
         인식된 텍스트 문자열
     """
-    results = model.transcribe(audio=audio_path, language=_lang(language))
+    from faster_whisper.audio import decode_audio
+    audio = _trim_silence(decode_audio(audio_path))
+    results = model.transcribe(audio=(audio, 16000), language=_lang(language))
     return results[0].text if results else ""
 
 
@@ -62,7 +82,7 @@ def transcribe_array(model, audio: np.ndarray, language: str = "ko") -> str:
     Returns:
         인식된 텍스트 문자열
     """
-    results = model.transcribe(audio=(audio.astype(np.float32), 16000), language=_lang(language))
+    results = model.transcribe(audio=(_trim_silence(audio.astype(np.float32)), 16000), language=_lang(language))
     return results[0].text if results else ""
 
 
