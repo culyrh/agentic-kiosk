@@ -383,7 +383,7 @@ def run_pipeline_phase(recordings: list[dict], model, agent_delay: float = 10.0)
             stt_ms = round((time.time() - t0) * 1000)
 
             actual_action, agent_ms, llm_ms, tool_ms, response = "", 0, 0, 0, ""
-            actual_voice, vsim = "", None
+            actual_voice, vsim, tts_ms = "", None, 0
             if hyp.strip():
                 time.sleep(agent_delay)
                 import openai as _openai
@@ -407,6 +407,15 @@ def run_pipeline_phase(recordings: list[dict], model, agent_delay: float = 10.0)
                     except Exception as e:
                         print(f"  [AGENT ERROR] {rec['path'].name}: {e}")
                         break
+
+            if actual_voice.strip():
+                from voice.tts import synthesize
+                t_tts = time.time()
+                try:
+                    synthesize(actual_voice)
+                except Exception as e:
+                    print(f"  [TTS ERROR] {e}")
+                tts_ms = round((time.time() - t_tts) * 1000)
 
             if group is None:
                 clear_history(session_id)
@@ -432,7 +441,8 @@ def run_pipeline_phase(recordings: list[dict], model, agent_delay: float = 10.0)
                 "agent_ms": agent_ms,
                 "llm_ms": llm_ms,
                 "tool_ms": tool_ms,
-                "total_ms": stt_ms + agent_ms,
+                "tts_ms": tts_ms,
+                "total_ms": stt_ms + agent_ms + tts_ms,
                 "response_head": response[:200],
             }
             results.append(row)
@@ -473,6 +483,7 @@ def summarize(results: list[dict], measure_agent: bool):
         if vsim_vals:
             print(f"  응답 유사도 (평균)  : {sum(vsim_vals)/len(vsim_vals):.4f}  — 코사인 유사도 0~1")
         print(f"  평균 Agent : {avg(r['agent_ms'] for r in results):.0f}ms")
+        print(f"  평균 TTS   : {avg(r.get('tts_ms', 0) for r in results):.0f}ms")
         print(f"  평균 Total : {avg(r['total_ms'] for r in results):.0f}ms")
 
     for dim, key in [("화자", "speaker"), ("환경", "env"), ("카테고리", "category")]:
@@ -493,7 +504,7 @@ def summarize(results: list[dict], measure_agent: bool):
                     f_ok = sum(1 for r in sc if r["action_full_ok"])
                     vs = [r["voice_sim"] for r in items if r.get("voice_sim") is not None]
                     vsim_str = f"  유사도={sum(vs)/len(vs):.3f}" if vs else ""
-                    line += f"  관대={t_ok/len(sc):.1%}  엄격={f_ok/len(sc):.1%}{vsim_str}  Agent={avg(r['agent_ms'] for r in items):.0f}ms"
+                    line += f"  관대={t_ok/len(sc):.1%}  엄격={f_ok/len(sc):.1%}{vsim_str}  Agent={avg(r['agent_ms'] for r in items):.0f}ms  TTS={avg(r.get('tts_ms',0) for r in items):.0f}ms"
             print(line)
 
 

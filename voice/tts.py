@@ -1,21 +1,31 @@
 import asyncio
 import io
-import edge_tts
 
-VOICE = "ko-KR-SunHiNeural"  # 한국어 여자 목소리
-RATE = "+10%"                 # 말하는 속도 (+는 빠르게, -는 느리게)
+import soundfile as sf
+
+_model = None
+_speaker_id = None
+_sample_rate = None
 
 
-async def synthesize_async(text: str) -> bytes:
-    """텍스트를 MP3 오디오 바이트로 변환 (비동기)"""
-    communicate = edge_tts.Communicate(text, VOICE, rate=RATE)
-    buf = io.BytesIO()
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            buf.write(chunk["data"])
-    return buf.getvalue()
+def _get_model():
+    global _model, _speaker_id, _sample_rate
+    if _model is None:
+        from melo.api import TTS
+        _model = TTS(language="KR", device="cpu")
+        _speaker_id = _model.hps.data.spk2id["KR"]
+        _sample_rate = _model.hps.data.sampling_rate
+    return _model, _speaker_id, _sample_rate
 
 
 def synthesize(text: str) -> bytes:
-    """텍스트를 MP3 오디오 바이트로 변환 (동기 래퍼)"""
-    return asyncio.run(synthesize_async(text))
+    model, speaker_id, sample_rate = _get_model()
+    audio = model.tts_to_file(text, speaker_id, output_path=None, speed=1.3, noise_scale=0.3, quiet=True)
+    buf = io.BytesIO()
+    sf.write(buf, audio, sample_rate, format="WAV")
+    buf.seek(0)
+    return buf.read()
+
+
+async def synthesize_async(text: str) -> bytes:
+    return await asyncio.to_thread(synthesize, text)
