@@ -9,6 +9,23 @@ faster-whisper를 사용해 로컬에서 음성 → 텍스트 변환
 import numpy as np
 from faster_whisper import WhisperModel
 
+_TRIM_FRAME = 512
+_TRIM_THRESHOLD = 0.01
+_TRIM_PAD = 1600
+
+
+def _trim_silence(audio: np.ndarray) -> np.ndarray:
+    energies = np.array([
+        np.sqrt(np.mean(audio[i: i + _TRIM_FRAME] ** 2))
+        for i in range(0, len(audio), _TRIM_FRAME)
+    ])
+    voiced = np.where(energies > _TRIM_THRESHOLD)[0]
+    if len(voiced) == 0:
+        return audio
+    start = max(0, voiced[0] * _TRIM_FRAME - _TRIM_PAD)
+    end = min(len(audio), (voiced[-1] + 1) * _TRIM_FRAME + _TRIM_PAD)
+    return audio[start:end]
+
 
 def load_model(model_size: str = "medium", device: str = "cpu") -> WhisperModel:
     """
@@ -38,15 +55,16 @@ def transcribe(model: WhisperModel, audio_path: str, language: str = "ko") -> st
     Returns:
         인식된 텍스트 문자열
     """
-    segments, info = model.transcribe(
-        audio_path,
+    from faster_whisper.audio import decode_audio
+    audio = _trim_silence(decode_audio(audio_path))
+    segments, _ = model.transcribe(
+        audio,
         language=language,
         beam_size=5,
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=500),
     )
 
-    # segments는 generator → 순회해야 결과가 나옴
     text = " ".join(segment.text.strip() for segment in segments)
     return text
 
@@ -65,7 +83,7 @@ def transcribe_array(model: WhisperModel, audio: "np.ndarray", language: str = "
         인식된 텍스트 문자열
     """
     segments, _ = model.transcribe(
-        audio.astype(np.float32),
+        _trim_silence(audio.astype(np.float32)),
         language=language,
         beam_size=2,
         vad_filter=True,
