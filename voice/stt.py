@@ -83,8 +83,17 @@ def transcribe_array(model: WhisperModel, audio: "np.ndarray", language: str = "
     Returns:
         인식된 텍스트 문자열
     """
+    trimmed = _trim_silence(audio.astype(np.float32))
+    print(f"[STT] audio={len(audio)/16000:.2f}s → trimmed={len(trimmed)/16000:.2f}s")
+
+    # 0.5초 미만 오디오는 노이즈 버스트로 판단하고 스킵
+    # → 짧은 모호한 오디오가 beam search를 오히려 더 오래 돌리는 문제 방지
+    if len(trimmed) < 16000 * 0.5:
+        print(f"[STT] skip: too short ({len(trimmed)/16000:.2f}s)")
+        return ""
+
     segments, _ = model.transcribe(
-        _trim_silence(audio.astype(np.float32)),
+        trimmed,
         language=language,
         beam_size=2,
         vad_filter=True,

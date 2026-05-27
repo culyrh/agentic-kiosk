@@ -13,8 +13,8 @@ from silero_vad import VADIterator, load_silero_vad
 SAMPLE_RATE = 16000
 CHUNK_SIZE = 512       # Silero VAD requires exactly 512 samples at 16kHz (32ms)
 PRE_ROLL_CHUNKS = 4    # 4 × 32ms = 128ms pre-roll captured before start detection
-MIN_SILENCE_MS = 800
-SPEECH_PAD_MS = 100
+MIN_SILENCE_MS = 500   # 800 → 500ms: 키오스크 단문 명령에 최적화
+SPEECH_PAD_MS = 50     # 100 → 50ms
 THRESHOLD = 0.5
 
 _model = None
