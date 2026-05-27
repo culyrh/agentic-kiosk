@@ -11,7 +11,6 @@ import asyncio
 import json
 import tempfile
 import time
-from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -20,17 +19,11 @@ from fastapi import APIRouter, File, Query, UploadFile, WebSocket, WebSocketDisc
 from app.agent import AgentResponse, chat
 from voice.stt import load_model, transcribe, transcribe_array
 from voice.tts import synthesize
+from voice.vad_silero import StreamingVAD
 
 router = APIRouter(prefix="/stt", tags=["stt"])
 
 SUPPORTED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".ogg", ".flac"}
-
-# VAD 파라미터
-SAMPLE_RATE = 16000
-ENERGY_THRESHOLD = 0.005
-SPEECH_PAD_CHUNKS = 4
-SILENCE_CHUNKS = 16
-MIN_SPEECH_CHUNKS = 6
 
 _model = None
 
@@ -49,10 +42,6 @@ def get_model():
     if _model is None:
         _model = load_model(model_size="small", device="cpu")
     return _model
-
-
-def rms(chunk: np.ndarray) -> float:
-    return float(np.sqrt(np.mean(chunk ** 2)))
 
 
 # ── REST ──────────────────────────────────────────────────────
@@ -105,12 +94,8 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
     await websocket.accept()
     model = get_model()
 
-    # VAD 상태 변수
-    pre_roll: deque[np.ndarray] = deque(maxlen=SPEECH_PAD_CHUNKS)  # 발화 시작 직전 청크 버퍼
-    speech_buffer: list[np.ndarray] = []
-    silence_count = 0
-    in_speech = False
-    last_activity_time = time.time()  # ← 마지막 활동 시간 기록
+    vad = StreamingVAD()
+    last_activity_time = time.time()
 
     # 동일 세션에서 파이프라인이 동시에 실행되면 conversation_history에 race condition 발생
     # (ToolMessage가 preceding tool_calls 없이 삽입됨 → OpenAI 400 에러)
@@ -254,35 +239,14 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
                     pass
                 continue
 
-            # 오디오 청크 처리 (기존 VAD 로직)
+            # 오디오 청크 처리 (Silero VAD)
             if not raw.get("bytes"):
                 continue
 
             chunk = np.frombuffer(raw["bytes"], dtype=np.float32)
-            is_voice = rms(chunk) > ENERGY_THRESHOLD
-
-            if not in_speech:
-                pre_roll.append(chunk)
-                if is_voice:
-                    in_speech = True
-                    silence_count = 0
-                    speech_buffer = list(pre_roll)  # pre-roll 포함해서 발화 시작
-            else:
-                speech_buffer.append(chunk)
-                if is_voice:
-                    silence_count = 0
-                else:
-                    silence_count += 1
-                    if silence_count >= SILENCE_CHUNKS:  # 무음 0.8초 → 발화 종료
-                        if len(speech_buffer) >= MIN_SPEECH_CHUNKS:
-                            audio = np.concatenate(speech_buffer)
-                            # create_task로 파이프라인을 백그라운드에 띄우고
-                            # VAD는 즉시 초기화해서 다음 발화를 바로 감지
-                            asyncio.create_task(process_and_send(audio))
-                        speech_buffer = []
-                        silence_count = 0
-                        in_speech = False
-                        pre_roll.clear()
+            utterance = vad.feed(chunk)
+            if utterance is not None:
+                asyncio.create_task(process_and_send(utterance))
 
     except (WebSocketDisconnect, RuntimeError):
         from db.sqlite import clear_cart
