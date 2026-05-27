@@ -6,12 +6,49 @@ faster-whisper를 사용해 로컬에서 음성 → 텍스트 변환
 캐시 위치: C:/Users/사용자/.cache/huggingface/hub/
 """
 
+import os
+import wave
+from pathlib import Path
+
 import numpy as np
 from faster_whisper import WhisperModel
+
+# python run.py debug 로 실행 시 활성화
+_DEBUG_RECORD = os.environ.get("STT_DEBUG", "0") == "1"
+_DEBUG_DIR = Path("tests/debug_audio")
+_debug_counter = 0
+
+
+def _save_debug_wav(audio: np.ndarray, label: str) -> None:
+    """trimmed 오디오를 WAV로 저장. STT_DEBUG=1 일 때만 호출됨."""
+    global _debug_counter
+    _debug_counter += 1
+    _DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+
+    safe_label = label[:30].replace("/", "_").replace(" ", "_")
+    filename = _DEBUG_DIR / f"{_debug_counter:03d}_{len(audio)/16000:.2f}s_{safe_label}.wav"
+
+    pcm = (audio * 32767).astype(np.int16)
+    with wave.open(str(filename), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)   # int16 = 2 bytes
+        wf.setframerate(16000)
+        wf.writeframes(pcm.tobytes())
+    print(f"[STT] 저장: {filename.name}")
 
 _TRIM_FRAME = 512
 _TRIM_THRESHOLD = 0.01   # RMS 기준 무음 판단값
 _TRIM_PAD = 1600         # 트리밍 후 앞뒤 여백 (0.1초 @ 16kHz)
+
+# Whisper 환각(hallucination) 패턴 — 이 결과는 빈 문자열로 처리
+_HALLUCINATIONS = {
+    "z", "zz", "zzz",
+    ".", "..", "...", "....",
+    "thank you", "thanks",
+    "mbc", "kbs", "sbs",      # 자막 환각
+    "♪", "♫", "(음악)",
+    "자막 제공", "번역",
+}
 
 
 def _trim_silence(audio: np.ndarray) -> np.ndarray:
@@ -101,6 +138,17 @@ def transcribe_array(model: WhisperModel, audio: "np.ndarray", language: str = "
     )
 
     text = " ".join(segment.text.strip() for segment in segments)
+
+    # 환각 패턴 필터: 알려진 쓰레기 출력이면 빈 문자열로 처리
+    if text.strip().lower() in _HALLUCINATIONS:
+        print(f"[STT] hallucination filtered: '{text.strip()}'")
+        if _DEBUG_RECORD:
+            _save_debug_wav(trimmed, f"HALLUCINATION_{text.strip()}")
+        return ""
+
+    if _DEBUG_RECORD:
+        _save_debug_wav(trimmed, text.strip() or "EMPTY")
+
     return text
 
 

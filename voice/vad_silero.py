@@ -15,7 +15,12 @@ CHUNK_SIZE = 512       # Silero VAD requires exactly 512 samples at 16kHz (32ms)
 PRE_ROLL_CHUNKS = 4    # 4 × 32ms = 128ms pre-roll captured before start detection
 MIN_SILENCE_MS = 500   # 800 → 500ms: 키오스크 단문 명령에 최적화
 SPEECH_PAD_MS = 50     # 100 → 50ms
-THRESHOLD = 0.5
+THRESHOLD = 0.65       # 0.5 → 0.65: 확신도 높은 발화만 통과 (원거리 대화 필터)
+
+# RMS 에너지 게이트: 발화 시작 시 이 값 미만이면 무시
+# 가까운 발화(30~50cm): RMS ~0.05~0.15 / 원거리 대화(3~5m): RMS ~0.005~0.03
+# 너무 높이면 조용히 말하는 사용자가 인식 안 될 수 있으니 주의
+ENERGY_GATE = 0.07
 
 _model = None
 
@@ -38,6 +43,7 @@ class StreamingVAD:
         threshold: float = THRESHOLD,
         min_silence_ms: int = MIN_SILENCE_MS,
         speech_pad_ms: int = SPEECH_PAD_MS,
+        energy_gate: float = ENERGY_GATE,
     ):
         self._vad = VADIterator(
             _get_model(),
@@ -46,6 +52,7 @@ class StreamingVAD:
             min_silence_duration_ms=min_silence_ms,
             speech_pad_ms=speech_pad_ms,
         )
+        self._energy_gate = energy_gate
         self._buf = np.zeros(0, dtype=np.float32)
         self._speech: list[np.ndarray] = []
         self._pre_roll: deque[np.ndarray] = deque(maxlen=PRE_ROLL_CHUNKS)
@@ -68,9 +75,14 @@ class StreamingVAD:
 
             if not self._in_speech:
                 self._pre_roll.append(window)
+                rms = float(np.sqrt(np.mean(window ** 2)))
                 if result and "start" in result:
-                    self._in_speech = True
-                    self._speech = list(self._pre_roll)
+                    if rms >= self._energy_gate:
+                        print(f"[VAD] start ✓  rms={rms:.4f} (gate={self._energy_gate})")
+                        self._in_speech = True
+                        self._speech = list(self._pre_roll)
+                    else:
+                        print(f"[VAD] blocked rms={rms:.4f} (gate={self._energy_gate})")
             else:
                 self._speech.append(window)
                 if result and "end" in result:
