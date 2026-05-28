@@ -25,7 +25,9 @@ def _save_debug_wav(audio: np.ndarray, label: str) -> None:
     _debug_counter += 1
     _DEBUG_DIR.mkdir(parents=True, exist_ok=True)
 
-    safe_label = label[:30].replace("/", "_").replace(" ", "_")
+    # Windows 파일명 금지 문자 전부 제거: \ / : * ? " < > |
+    import re
+    safe_label = re.sub(r'[\\/:*?"<>|]', '', label).replace(" ", "_")[:30]
     filename = _DEBUG_DIR / f"{_debug_counter:03d}_{len(audio)/16000:.2f}s_{safe_label}.wav"
 
     pcm = (audio * 32767).astype(np.int16)
@@ -133,8 +135,6 @@ def transcribe_array(model: WhisperModel, audio: "np.ndarray", language: str = "
         trimmed,
         language=language,
         beam_size=2,
-        vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=300),
     )
 
     text = " ".join(segment.text.strip() for segment in segments)
