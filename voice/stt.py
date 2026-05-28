@@ -108,16 +108,39 @@ def load_model(model_size: str = "small", device: str = "cpu"):
     return None
 
 
+def _decode_to_wav(audio_path: str) -> io.BytesIO:
+    """
+    PyAV(내장 ffmpeg)로 임의 포맷 오디오를 16kHz mono WAV BytesIO로 변환.
+    3gp4, m4a, mp3 등 ffmpeg 지원 포맷 전부 처리 가능.
+    """
+    import av as _av
+
+    container = _av.open(audio_path)
+    resampler = _av.AudioResampler(format="fltp", layout="mono", rate=16000)
+
+    chunks = []
+    for frame in container.decode(audio=0):
+        for rf in resampler.resample(frame):
+            chunks.append(rf.to_ndarray()[0])
+    for rf in resampler.resample(None):   # flush
+        chunks.append(rf.to_ndarray()[0])
+    container.close()
+
+    audio = np.concatenate(chunks).astype(np.float32) if chunks else np.zeros(0, dtype=np.float32)
+    return _numpy_to_wav_bytes(audio)
+
+
 def transcribe(model, audio_path: str, language: str = "ko") -> str:
     """
     오디오 파일 경로 → 텍스트 변환 (REST 엔드포인트용).
+    PyAV로 포맷 변환 후 API에 전달 — 3gp4/m4a 포함 ffmpeg 지원 포맷 전부 OK.
     """
-    with open(audio_path, "rb") as f:
-        response = _get_client().audio.transcriptions.create(
-            model="whisper-1",
-            file=f,
-            language=language,
-        )
+    wav_buf = _decode_to_wav(audio_path)
+    response = _get_client().audio.transcriptions.create(
+        model="whisper-1",
+        file=wav_buf,
+        language=language,
+    )
     return response.text.strip()
 
 
