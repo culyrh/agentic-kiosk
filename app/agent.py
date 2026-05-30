@@ -1,5 +1,4 @@
 import os
-import re
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -163,7 +162,6 @@ def clear_history(session_id: str) -> None:
 
 
 _VOICE_PREFIX = '"voice": "'
-_SENTENCE_END = re.compile(r'(?<=[.!?])\s*')
 
 
 async def chat_stream(user_input: str, session_id: str = "default"):
@@ -176,7 +174,7 @@ async def chat_stream(user_input: str, session_id: str = "default"):
     history.append({"role": "user", "content": user_input})
 
     tracker = LatencyTracker()
-    config = {"callbacks": [tracker], "recursion_limit": 25}
+    config = {"recursion_limit": 25}
 
     search_buf = ""   # voice prefix 탐색용
     sentence_buf = "" # 현재 문장 누적
@@ -192,13 +190,26 @@ async def chat_stream(user_input: str, session_id: str = "default"):
             version="v2",
         ):
             kind = event["event"]
+            name = event.get("name", "")
 
-            if kind == "on_chat_model_stream":
-                chunk = event["data"]["chunk"]
-                # tool_call_chunks가 있으면 툴 선택 단계 → 스킵
-                if getattr(chunk, "tool_call_chunks", None):
+            if kind == "on_chain_start" and name == "model":
+                tracker.record_llm_start()
+            elif kind == "on_chain_end" and name == "model":
+                tracker.record_llm_end()
+            elif kind == "on_tool_start":
+                tracker.record_tool_start(str(event.get("run_id", "")), name)
+            elif kind == "on_tool_end":
+                tracker.record_tool_end(str(event.get("run_id", "")))
+            elif kind == "on_chain_stream" and name == "model":
+                chunk = event["data"].get("chunk", {})
+                msgs = chunk if isinstance(chunk, list) else chunk.get("messages", [])
+                if not msgs:
                     continue
-                token = chunk.content if isinstance(chunk.content, str) else ""
+                msg = msgs[-1]
+                # tool_call_chunks가 있으면 툴 선택 단계 → 스킵
+                if getattr(msg, "tool_call_chunks", None):
+                    continue
+                token = msg.content if isinstance(getattr(msg, "content", None), str) else ""
                 if not token or voice_done:
                     continue
 
@@ -233,7 +244,7 @@ async def chat_stream(user_input: str, session_id: str = "default"):
                         yield sentence_buf.strip()
                         sentence_buf = ""
 
-            elif kind == "on_chain_end" and event.get("name") == "LangGraph":
+            elif kind == "on_chain_end" and name == "LangGraph":
                 messages = event["data"].get("output", {}).get("messages", [])
                 if messages:
                     new_messages = messages[len(history):]

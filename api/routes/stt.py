@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 from fastapi import APIRouter, File, Query, UploadFile, WebSocket, WebSocketDisconnect
 
-from app.agent import AgentResponse, chat
+from app.agent import AgentResponse
 from voice.stt import load_model, transcribe, transcribe_array
 from voice.tts import synthesize
 from voice.vad_silero import StreamingVAD
@@ -92,6 +92,17 @@ async def stt_websocket(websocket: WebSocket, session_id: str = "default"):
     반환 형식: {"stt_text": "인식된 텍스트", "refined_text": "정제된 텍스트", "response": "에이전트 응답"}
     """
     await websocket.accept()
+
+    async def _warm_up():
+        try:
+            from app.agent import llm
+            from langchain_core.messages import HumanMessage
+            await llm.ainvoke([HumanMessage(content="안녕")])
+        except Exception:
+            pass
+
+    asyncio.create_task(_warm_up())
+
     model = get_model()
 
     vad = StreamingVAD()
