@@ -21,3 +21,5 @@ my_prompt_changes.txt
 test_flow_result.txt
 
 /models/
+
+/tests/debug_audio/

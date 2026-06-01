@@ -8,20 +8,36 @@ class LatencyTracker(BaseCallbackHandler):
         self._llm_start: float | None = None
         self._tool_starts: dict[str, tuple[str, float]] = {}
 
-    def on_llm_start(self, serialized, messages, **kwargs):
+    # ── 직접 호출용 (astream_events 이벤트에서 chat_stream이 직접 호출) ──
+
+    def record_llm_start(self):
         self._llm_start = time.time()
 
-    def on_llm_end(self, response, **kwargs):
+    def record_llm_end(self):
         if self._llm_start is not None:
             self.log.append({"type": "llm", "ms": round((time.time() - self._llm_start) * 1000)})
             self._llm_start = None
 
+    def record_tool_start(self, run_id: str, name: str):
+        self._tool_starts[run_id] = (name, time.time())
+
+    def record_tool_end(self, run_id: str):
+        name, start = self._tool_starts.pop(run_id, ("unknown", time.time()))
+        self.log.append({"type": "tool", "name": name, "ms": round((time.time() - start) * 1000)})
+
+    # ── 콜백용 (sync agent.invoke() → chat() 경로) ──
+
+    def on_llm_start(self, serialized, messages, **kwargs):
+        self.record_llm_start()
+
+    def on_llm_end(self, response, **kwargs):
+        self.record_llm_end()
+
     def on_tool_start(self, serialized, input_str, run_id, **kwargs):
-        self._tool_starts[str(run_id)] = (serialized.get("name", "unknown"), time.time())
+        self.record_tool_start(str(run_id), serialized.get("name", "unknown"))
 
     def on_tool_end(self, output, run_id, **kwargs):
-        name, start = self._tool_starts.pop(str(run_id), ("unknown", time.time()))
-        self.log.append({"type": "tool", "name": name, "ms": round((time.time() - start) * 1000)})
+        self.record_tool_end(str(run_id))
 
     def summary(self) -> dict:
         llm_total = sum(e["ms"] for e in self.log if e["type"] == "llm")
