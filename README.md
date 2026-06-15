@@ -1,4 +1,4 @@
-﻿# 사용자 의도 파악 및 맥락기반 추천 기능을 갖춘 지능형 음성 결제 에이전트
+# 사용자 의도 파악 및 맥락기반 추천 기능을 갖춘 지능형 음성 결제 에이전트
 
 기존 키오스크의 복잡한 계층형 UI를 거칠 필요 없이 사용자의 자연스러운 음성 발화를 AI 에이전트가 스스로 분석, 판단하여 필요한 동작을 자율적으로 수행하는 무인 단말기용 음성 주문 시스템입니다. ([Front-End](https://github.com/seb0070/sadollar-kiosk-fe))
 
@@ -7,36 +7,20 @@
 <table>
   <tr>
     <td align="center">
-      <a href="https://github.com/ramimi12">
-        <img src="https://avatars.githubusercontent.com/ramimi12" width="100px" /><br/>
-        <b>김보람</b>
-      </a><br/>
-      <sub>음성 처리 · AI 에이전트</sub><br/>
-      <a href="https://github.com/ramimi12"><img src="https://img.shields.io/badge/ramimi12-181717?style=flat-square&logo=github&logoColor=white" /></a>
+      <a href="https://github.com/ramimi12"><img src="https://avatars.githubusercontent.com/ramimi12" width="80px" /></a><br/>
+      <sub><b>김보람</b></sub><br/>
     </td>
     <td align="center">
-      <a href="https://github.com/culyrh">
-        <img src="https://avatars.githubusercontent.com/culyrh" width="100px" /><br/>
-        <b>박소현</b>
-      </a><br/>
-      <sub>백엔드 · API</sub><br/>
-      <a href="https://github.com/culyrh"><img src="https://img.shields.io/badge/culyrh-181717?style=flat-square&logo=github&logoColor=white" /></a>
+      <a href="https://github.com/culyrh"><img src="https://avatars.githubusercontent.com/culyrh" width="80px" /></a><br/>
+      <sub><b>박소현</b></sub><br/>
     </td>
     <td align="center">
-      <a href="https://github.com/yuannnna">
-        <img src="https://avatars.githubusercontent.com/yuannnna" width="100px" /><br/>
-        <b>유한나</b>
-      </a><br/>
-      <sub>AI 에이전트</sub><br/>
-      <a href="https://github.com/yuannnna"><img src="https://img.shields.io/badge/yuannnna-181717?style=flat-square&logo=github&logoColor=white" /></a>
+      <a href="https://github.com/yuannnna"><img src="https://avatars.githubusercontent.com/yuannnna" width="80px" /></a><br/>
+      <sub><b>유한나</b></sub><br/>
     </td>
     <td align="center">
-      <a href="https://github.com/seb0070">
-        <img src="https://avatars.githubusercontent.com/seb0070" width="100px" /><br/>
-        <b>정세빈</b>
-      </a><br/>
-      <sub>프론트엔드</sub><br/>
-      <a href="https://github.com/seb0070"><img src="https://img.shields.io/badge/seb0070-181717?style=flat-square&logo=github&logoColor=white" /></a>
+      <a href="https://github.com/seb0070"><img src="https://avatars.githubusercontent.com/seb0070" width="80px" /></a><br/>
+      <sub><b>정세빈</b></sub><br/>
     </td>
   </tr>
 </table>
@@ -86,11 +70,15 @@ edge-tts → 음성 + 화면 액션 응답
 
 ### II. 음성 처리 (STT / VAD / TTS)
 
-STT는 4개 모델(whisper-ko-zeroth, Qwen, Whisper small 로컬, Whisper API)을 화자 4인·환경 2종·총 320개 샘플로 비교 평가하여 Whisper API(평균 CER 7.76%, 응답속도 1,394ms)를 최종 채택하였다. 발화 구간 검출에는 Silero VAD를 적용하여 512 sample(32ms) 단위로 배경 소음과 실제 발화를 구분하며, 발화 시작 전 128ms pre-roll을 포함하여 앞 음절 누락을 방지하였다. TTS는 Microsoft edge-tts(ko-KR-SunHiNeural)를 채택하였으며, LLM 응답 전체를 기다리지 않고 문장 단위로 즉시 합성·전송하는 스트리밍 방식으로 체감 응답속도를 단축하였다.
+STT는 4개 모델(whisper-ko-zeroth, Qwen, Whisper small 로컬, Whisper API)을 화자 4인·환경 2종(기본/소음)·총 320개 샘플로 비교 평가하여 Whisper API(평균 CER 7.76%, 응답속도 1,394ms)를 최종 채택하였다. 발화 구간 검출에는 Silero VAD를 적용하여 512 sample(32ms) 단위로 배경 소음과 실제 발화를 구분하며, 발화 시작 전 128ms pre-roll을 포함하여 앞 음절 누락을 방지하였다. 
+
+TTS는 Microsoft edge-tts(ko-KR-SunHiNeural)를 채택하였으며, LLM 응답 전체를 기다리지 않고 문장 단위로 즉시 합성·전송하는 스트리밍 방식으로 체감 응답속도를 단축하였다.
 
 ### III. AI 에이전트 (LangChain ReAct + RAG)
 
-에이전트는 LangChain ReAct 워크플로우로 구현하였으며 GPT-4o(temperature=0)를 사용한다. 메뉴 검색은 자연어 query가 있을 때 ChromaDB 벡터 검색을, 카테고리·뱃지 등 조건 필터가 명확한 경우 SQLite 직접 쿼리로 자동 분기하는 하이브리드 방식을 적용하였다. STT 오인식에 대응하여 메뉴 조회 시 ① 완전 일치 → ② 토큰 AND LIKE → ③ 접두어 단계별 수집의 3단계 퍼지 매칭을 구현하였다. 멀티턴 대화는 세션별 슬라이딩 윈도우(최근 5턴)로 관리하며, TYPE_SELECT → DRINK_SELECT → SIDE_SELECT로 이어지는 주문 흐름에서 이전 선택값을 히스토리에서 참조하여 연속적인 맥락을 유지한다.
+에이전트는 LangChain ReAct 워크플로우로 구현하였으며 GPT-4o(temperature=0)를 사용한다. 메뉴 검색은 자연어 query가 있을 때 ChromaDB 벡터 검색을, 카테고리·뱃지 등 조건 필터가 명확한 경우 SQLite 직접 쿼리로 자동 분기하는 하이브리드 방식을 적용하였다.
+
+STT 오인식에 대응하여 메뉴 조회 시 ① 완전 일치 → ② 토큰 AND LIKE → ③ 접두어 단계별 수집의 3단계 퍼지 매칭을 구현하였다. 멀티턴 대화는 세션별 슬라이딩 윈도우(최근 5턴)로 관리하며, TYPE_SELECT → DRINK_SELECT → SIDE_SELECT로 이어지는 주문 흐름에서 이전 선택값을 히스토리에서 참조하여 연속적인 맥락을 유지한다.
 
 ### IV. 백엔드 / 프론트엔드
 
@@ -132,6 +120,7 @@ flowchart TD
 ### 1. Silero VAD 처리 정책
 
 키오스크 환경은 매장 소음·원거리 대화 등 배경 잡음이 다양하므로, 단순 무음 감지만으로는 오탐이 잦다. 따라서 연결 초기에 자동 캘리브레이션을 수행하고 발화 판정에 여러 조건을 조합한다.
+
 Silero VAD는 16kHz 기준 정확히 512 샘플(32ms) 단위의 입력만 허용하므로, 클라이언트가 50ms 단위로 전송하는 PCM 청크를 내부 버퍼에 누적 후 512 샘플씩 슬라이딩 처리한다. 
 
 | 정책 | 값 | 근거 |
@@ -143,8 +132,6 @@ Silero VAD는 16kHz 기준 정확히 512 샘플(32ms) 단위의 입력만 허용
 | 무음 판정 시간 | 800ms → **500ms** | 키오스크 단문 명령에 최적화, 체감 응답속도 단축 |
 | 발화 패딩 | 100ms → **50ms** | 발화 끝 잘림 방지와 응답속도 균형 |
 | Pre-roll 버퍼 | 4 × 32ms = **128ms** | VAD start 이전 구간 포함, 첫 음절 잘림 방지 |
-
-캘리브레이션 완료 전에는 기본 에너지 게이트(0.02)를 사용하며, Silero VAD 모델이 발화 시작을 판단하더라도, 에너지 게이트를 동시에 통과해야만 실제 발화로 인정한다.
 
 ---
 
@@ -205,7 +192,7 @@ STT가 메뉴명을 오인식한 경우("불고기버그" → "불고기버거")
 
 ## 주요 기능
 
-- **End-to-end 음성 주문**: 자연어 발화로 메뉴 검색, 장바구니 담기, 수량 변경, 취소, 결제까지 전 과정 처리
+- **End-to-end 음성 주문**: 메뉴 검색, 장바구니 담기, 수량 변경, 취소, 결제까지 전 과정 처리
 - **메뉴 추천 및 검색**: "가볍게 먹을 수 있는 거", "새우 빼고 덜 매운 거" 등 키워드 없이도 의도에 맞는 메뉴 검색
 - **맥락 인식형 대화**: 세션별 슬라이딩 윈도우(최근 5턴)로 대화 흐름 유지, 이전 발화 참조 가능
 - **욕설 필터링**: 백엔드 미들웨어 → WebSocket → 시스템 프롬프트 3단계 필터링
