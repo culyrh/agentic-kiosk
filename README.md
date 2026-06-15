@@ -1,4 +1,4 @@
-## 사용자 의도 파악 및 맥락기반 추천 기능을 갖춘 지능형 음성 결제 에이전트
+﻿# 사용자 의도 파악 및 맥락기반 추천 기능을 갖춘 지능형 음성 결제 에이전트
 
 기존 키오스크의 복잡한 계층형 UI를 거칠 필요 없이 사용자의 자연스러운 음성 발화를 AI 에이전트가 스스로 분석, 판단하여 필요한 동작을 자율적으로 수행하는 무인 단말기용 음성 주문 시스템입니다. ([Front-End](https://github.com/seb0070/sadollar-kiosk-fe))
 
@@ -7,20 +7,36 @@
 <table>
   <tr>
     <td align="center">
-      <a href="https://github.com/ramimi12"><img src="https://avatars.githubusercontent.com/ramimi12" width="80px" /></a><br/>
-      <sub><b>김보람</b></sub><br/>
+      <a href="https://github.com/ramimi12">
+        <img src="https://avatars.githubusercontent.com/ramimi12" width="100px" /><br/>
+        <b>김보람</b>
+      </a><br/>
+      <sub>음성 처리 · AI 에이전트</sub><br/>
+      <a href="https://github.com/ramimi12"><img src="https://img.shields.io/badge/ramimi12-181717?style=flat-square&logo=github&logoColor=white" /></a>
     </td>
     <td align="center">
-      <a href="https://github.com/culyrh"><img src="https://avatars.githubusercontent.com/culyrh" width="80px" /></a><br/>
-      <sub><b>박소현</b></sub><br/>
+      <a href="https://github.com/culyrh">
+        <img src="https://avatars.githubusercontent.com/culyrh" width="100px" /><br/>
+        <b>박소현</b>
+      </a><br/>
+      <sub>백엔드 · API</sub><br/>
+      <a href="https://github.com/culyrh"><img src="https://img.shields.io/badge/culyrh-181717?style=flat-square&logo=github&logoColor=white" /></a>
     </td>
     <td align="center">
-      <a href="https://github.com/yuannnna"><img src="https://avatars.githubusercontent.com/yuannnna" width="80px" /></a><br/>
-      <sub><b>유한나</b></sub><br/>
+      <a href="https://github.com/yuannnna">
+        <img src="https://avatars.githubusercontent.com/yuannnna" width="100px" /><br/>
+        <b>유한나</b>
+      </a><br/>
+      <sub>AI 에이전트</sub><br/>
+      <a href="https://github.com/yuannnna"><img src="https://img.shields.io/badge/yuannnna-181717?style=flat-square&logo=github&logoColor=white" /></a>
     </td>
     <td align="center">
-      <a href="https://github.com/seb0070"><img src="https://avatars.githubusercontent.com/seb0070" width="80px" /></a><br/>
-      <sub><b>정세빈</b></sub><br/>
+      <a href="https://github.com/seb0070">
+        <img src="https://avatars.githubusercontent.com/seb0070" width="100px" /><br/>
+        <b>정세빈</b>
+      </a><br/>
+      <sub>프론트엔드</sub><br/>
+      <a href="https://github.com/seb0070"><img src="https://img.shields.io/badge/seb0070-181717?style=flat-square&logo=github&logoColor=white" /></a>
     </td>
   </tr>
 </table>
@@ -66,7 +82,7 @@ edge-tts → 음성 + 화면 액션 응답
 
 ### I. 데이터 구축
 
-롯데리아 공식 사이트를 Selenium 기반 크롤러로 수집하여 단품 78개, 세트 23개, 옵션 41개를 SQLite DB에 구축하였다. 메뉴명·설명·원산지를 하나의 텍스트로 결합하여 ChromaDB에 벡터로 저장하고, 가격·카테고리·알레르기·뱃지·매운맛 단계는 metadata로 분리하여 벡터 검색과 조건 필터링을 독립적으로 처리할 수 있도록 설계하였다.
+롯데리아 공식 사이트를 Selenium 크롤러로 수집하여 단품 78개, 세트 23개, 옵션 41개를 SQLite DB에 구축하였다. 메뉴명·설명·원산지를 하나의 텍스트로 결합하여 ChromaDB에 벡터로 저장하고, 가격·카테고리·알레르기·뱃지·매운맛 단계는 metadata로 분리하여 벡터 검색과 조건 필터링을 독립적으로 처리할 수 있도록 설계하였다.
 
 ### II. 음성 처리 (STT / VAD / TTS)
 
