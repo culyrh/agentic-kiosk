@@ -1,33 +1,27 @@
-# 2026-1 산학실전 캡스톤디자인
-## 사용자 의도 파악 및 맥락기반 추천 기능을 갖춘 지능형 음성 결제 에이전트
+# 사용자 의도 파악 및 맥락기반 추천 기능을 갖춘 지능형 음성 결제 에이전트
+> 2026-1 산학실전 캡스톤디자인
 
-기존 키오스크의 복잡한 계층형 UI를 거칠 필요 없이 사용자의 자연스러운 음성 발화를 AI 에이전트가 스스로 분석, 판단하여 필요한 동작을 자율적으로 수행하는 무인 단말기용 음성 주문 시스템입니다.
-
-프론트 깃허브 링크 : [Front-End](https://github.com/seb0070/sadollar-kiosk-fe)
+기존 키오스크의 복잡한 계층형 UI를 거칠 필요 없이 사용자의 자연스러운 음성 발화를 AI 에이전트가 스스로 분석, 판단하여 필요한 동작을 자율적으로 수행하는 무인 단말기용 음성 주문 시스템입니다. ([Front-End](https://github.com/seb0070/sadollar-kiosk-fe))
 
 <div align="center">
 
 <table>
   <tr>
     <td align="center">
-      <a href="https://github.com/ramimi12"><img src="https://avatars.githubusercontent.com/ramimi12" width="100px" /></a><br/>
+      <a href="https://github.com/ramimi12"><img src="https://avatars.githubusercontent.com/ramimi12" width="80px" /></a><br/>
       <sub><b>김보람</b></sub><br/>
-      <sub>백엔드 API</sub>
     </td>
     <td align="center">
-      <a href="https://github.com/culyrh"><img src="https://avatars.githubusercontent.com/culyrh" width="100px" /></a><br/>
+      <a href="https://github.com/culyrh"><img src="https://avatars.githubusercontent.com/culyrh" width="80px" /></a><br/>
       <sub><b>박소현</b></sub><br/>
-      <sub>음성 처리 · AI 에이전트</sub>
     </td>
     <td align="center">
-      <a href="https://github.com/yuannnna"><img src="https://avatars.githubusercontent.com/yuannnna" width="100px" /></a><br/>
+      <a href="https://github.com/yuannnna"><img src="https://avatars.githubusercontent.com/yuannnna" width="80px" /></a><br/>
       <sub><b>유한나</b></sub><br/>
-      <sub>AI 에이전트</sub>
     </td>
     <td align="center">
-      <a href="https://github.com/seb0070"><img src="https://avatars.githubusercontent.com/seb0070" width="100px" /></a><br/>
+      <a href="https://github.com/seb0070"><img src="https://avatars.githubusercontent.com/seb0070" width="80px" /></a><br/>
       <sub><b>정세빈</b></sub><br/>
-      <sub>프론트엔드</sub>
     </td>
   </tr>
 </table>
@@ -38,7 +32,7 @@
 
 ## 목적
 
-### 디지털 취약계층의 키오스크 이용 격차를 해소하기 위해, 음성 발화만으로 메뉴 검색부터 결제까지 전 과정을 처리하는 AI 음성 주문 키오스크를 구축한다.
+### 디지털 취약계층의 키오스크 이용 격차 해소를 위해, 음성 발화만으로 메뉴 검색부터 결제까지 전 과정을 처리하는 AI 음성 주문 키오스크를 구축한다.
 
 ---
 
@@ -51,10 +45,10 @@ Silero VAD → Whisper STT
 ↓
 LangChain ReAct 에이전트 (GPT-4o)
 ↓
-┌─────────────────────────────────────────┐
-│  메뉴 검색        영양/가격 조회   장바구니/주문  │
-│  ChromaDB         SQLite          SQLite  │
-└─────────────────────────────────────────┘
+┌────────────────────────────────────────────────┐
+│  메뉴 검색     영양/가격 조회   장바구니/주문  │
+│  ChromaDB         SQLite            SQLite     │
+└────────────────────────────────────────────────┘
 ↓
 edge-tts → 음성 + 화면 액션 응답
 ```
