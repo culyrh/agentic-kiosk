@@ -1,5 +1,4 @@
-# 사용자 의도 파악 및 맥락기반 추천 기능을 갖춘 지능형 음성 결제 에이전트
-> 2026-1 산학실전 캡스톤디자인
+  # [2026-1 산학실전 캡스톤디자인] - 사용자 의도 파악 및 맥락기반 추천 기능을 갖춘 지능형 음성 결제 에이전트
 
 기존 키오스크의 복잡한 계층형 UI를 거칠 필요 없이 사용자의 자연스러운 음성 발화를 AI 에이전트가 스스로 분석, 판단하여 필요한 동작을 자율적으로 수행하는 무인 단말기용 음성 주문 시스템입니다. ([Front-End](https://github.com/seb0070/sadollar-kiosk-fe))
 
@@ -30,6 +29,18 @@
 
 ---
 
+## 기술 스택
+
+| 분류 | 기술 |
+|------|------|
+| **AI / LLM** | GPT-4o, LangChain ReAct, ChromaDB, ko-sroberta-multitask |
+| **음성 처리** | Whisper API, Silero VAD, edge-tts |
+| **백엔드** | FastAPI, SQLite, WebSocket |
+| **프론트엔드** | React |
+| **인프라** | AWS EC2, Docker |
+
+---
+
 ## 목적
 
 ### 디지털 취약계층의 키오스크 이용 격차 해소를 위해, 음성 발화만으로 메뉴 검색부터 결제까지 전 과정을 처리하는 AI 음성 주문 키오스크를 구축한다.
@@ -53,269 +64,117 @@ LangChain ReAct 에이전트 (GPT-4o)
 edge-tts → 음성 + 화면 액션 응답
 ```
 
-### 설계 원칙
+---
 
-- **ChromaDB**: `search_menu`에서 자연어 query가 있을 때만 사용. 카테고리·뱃지·재료 제외 조건만 있는 경우 SQLite 직접 쿼리로 처리
-- **장바구니/주문**: ChromaDB를 거치지 않고 SQLite 이름 매칭으로 직접 처리
-- **멀티턴 대화**: 세션별 `defaultdict` + 슬라이딩 윈도우(최근 5턴) 인메모리 관리
+## 구현 내용
+
+### I. 데이터 구축
+
+롯데리아 공식 사이트를 Selenium 기반 크롤러로 수집하여 단품 78개, 세트 23개, 옵션 41개를 SQLite DB에 구축하였다. 메뉴명·설명·원산지를 하나의 텍스트로 결합하여 ChromaDB에 벡터로 저장하고, 가격·카테고리·알레르기·뱃지·매운맛 단계는 metadata로 분리하여 벡터 검색과 조건 필터링을 독립적으로 처리할 수 있도록 설계하였다.
+
+### II. 음성 처리 (STT / VAD / TTS)
+
+STT는 4개 모델(whisper-ko-zeroth, Qwen, Whisper small 로컬, Whisper API)을 화자 4인·환경 2종·총 320개 샘플로 비교 평가하여 Whisper API(평균 CER 7.76%, 응답속도 1,394ms)를 최종 채택하였다. 발화 구간 검출에는 Silero VAD를 적용하여 512 sample(32ms) 단위로 배경 소음과 실제 발화를 구분하며, 발화 시작 전 128ms pre-roll을 포함하여 앞 음절 누락을 방지하였다. TTS는 Microsoft edge-tts(ko-KR-SunHiNeural)를 채택하였으며, LLM 응답 전체를 기다리지 않고 문장 단위로 즉시 합성·전송하는 스트리밍 방식으로 체감 응답속도를 단축하였다.
+
+### III. AI 에이전트 (LangChain ReAct + RAG)
+
+에이전트는 LangChain ReAct 워크플로우로 구현하였으며 GPT-4o(temperature=0)를 사용한다. 메뉴 검색은 자연어 query가 있을 때 ChromaDB 벡터 검색을, 카테고리·뱃지 등 조건 필터가 명확한 경우 SQLite 직접 쿼리로 자동 분기하는 하이브리드 방식을 적용하였다. STT 오인식에 대응하여 메뉴 조회 시 ① 완전 일치 → ② 토큰 AND LIKE → ③ 접두어 단계별 수집의 3단계 퍼지 매칭을 구현하였다. 멀티턴 대화는 세션별 슬라이딩 윈도우(최근 5턴)로 관리하며, TYPE_SELECT → DRINK_SELECT → SIDE_SELECT로 이어지는 주문 흐름에서 이전 선택값을 히스토리에서 참조하여 연속적인 맥락을 유지한다.
+
+### IV. 백엔드 / 프론트엔드
+
+백엔드는 초기 Spring + FastAPI 이중 구조에서 FastAPI 단일 서버로 통합하였다. 욕설 필터링은 ① 백엔드 미들웨어 → ② WebSocket 수신 → ③ 시스템 프롬프트의 3단계로 구현하였으며, 3분 비활성 시 장바구니·히스토리 자동 초기화 및 TIMEOUT 액션 전송 기능을 추가하였다. 프론트엔드는 React로 개발하였으며 KioskScaler 컴포넌트로 430px 기준 화면 비율을 자동 조정하여 실제 키오스크 환경에서도 동일한 UI를 제공한다.
 
 ---
 
-## 1. 환경 세팅
+## 주요 기능
 
+- **음성 주문**: 자연어 발화로 메뉴 검색, 장바구니 담기, 수량 변경, 취소, 결제까지 전 과정 처리
+- **의미 기반 메뉴 검색**: "가볍게 먹을 수 있는 거", "새우 빼고 덜 매운 거" 등 키워드 없이도 의도에 맞는 메뉴 검색
+- **맥락 기반 대화**: 세션별 슬라이딩 윈도우(최근 5턴)로 대화 흐름 유지, 이전 발화 참조 가능
+- **STT 오인식 교정**: "불고기버그" → "불고기버거" 등 음성 인식 오류를 에이전트가 자동 교정
+- **욕설 필터링**: 백엔드 미들웨어 → WebSocket → 시스템 프롬프트 3단계 필터링
+
+---
+
+## 실행 방법
+
+### 요구사항
 ```
-Python 3.10.11 권장
+Python 3.10.11
 ```
 
-### 가상환경 생성 및 활성화
+### 설치
 ```bash
+# 가상환경 생성 및 활성화
 py -3.10 -m venv venv
+venv\Scripts\activate      # Windows
+source venv/bin/activate   # Mac/Linux
 
-# Windows
-venv\Scripts\activate
-
-# Mac/Linux
-source venv/bin/activate
-```
-
-### 패키지 설치
-```bash
+# 패키지 설치
 pip install -r requirements.txt
 ```
 
 ### 환경변수 설정
-`.env` 파일 생성 후 API 키 입력:
+`.env` 파일 생성:
 ```
 OPENAI_API_KEY=sk-...
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=lsv2_...
-LANGCHAIN_PROJECT=sadollar-ai
 ```
 
-### DB 및 ChromaDB 초기화 (최초 1회)
+### DB 및 벡터 DB 초기화 (최초 1회)
 ```bash
-# 1. 테이블 생성
-python db_setup.py
-
-# 2. JSON 데이터 → DB 삽입
-python insert_data.py
-
-# 3. ChromaDB 벡터 생성 (메뉴 검색용 임베딩)
-python build_index.py
+python db_setup.py      # 테이블 생성
+python insert_data.py   # 데이터 삽입
+python build_index.py   # ChromaDB 벡터 생성
 ```
 
-### 세트 메뉴 크롤링 (데이터 업데이트 시)
-```bash
-# 세트 정보 크롤링 (알레르기, 열량, 원산지)
-python crawling/crawling_set.py
-
-# 세트 이미지 크롤링 (셀레니움 필요)
-python crawling/crawling_setimage.py
-
-# 크롤링 후 DB 재삽입
-python insert_data.py
-```
-
----
-
-## 2. AI 에이전트 Tool 함수 목록
-
-LangChain ReAct 에이전트가 사용하는 tool 함수 목록입니다.
-
-| 함수 | 파일 | 기능 |
-|------|------|------|
-| `search_menu` | menu_tools.py | RAG 기반 메뉴 검색 (벡터+SQL 하이브리드) |
-| `get_menu_by_price` | menu_tools.py | 가격 기준 메뉴 조회 (최저/최고/예산 범위) |
-| `get_menu_by_nutrition` | menu_tools.py | 영양소(칼로리/당류/단백질) 기준 정렬 조회 |
-| `get_menu_info` | menu_tools.py | 특정 메뉴 가격·설명 조회 |
-| `get_set_info` | menu_tools.py | 세트 메뉴 정보 + 옵션 목록 |
-| `add_to_cart` | cart_tools.py | 장바구니에 메뉴 추가 |
-| `update_cart_quantity` | cart_tools.py | 장바구니 수량 변경 (0 이하면 자동 제거) |
-| `remove_from_cart` | cart_tools.py | 장바구니에서 특정 메뉴 제거 |
-| `upgrade_to_set` | cart_tools.py | 단품 버거 → 세트 전환 (음료/사이드 지정) |
-| `downgrade_to_single` | cart_tools.py | 세트 → 단품 전환 |
-| `view_cart` | cart_tools.py | 장바구니 목록 및 총 금액 확인 |
-| `confirm_order` | cart_tools.py | 주문 완료 및 결제 처리 |
-| `clear_cart` | cart_tools.py | 장바구니 전체 비우기 |
-
----
-
-## 3. DB 구조
-
-### SQLite 테이블 (ria_menu.db)
-
-| 테이블 | 역할 | 데이터 수 |
-|--------|------|-----------|
-| menu | 단품 메뉴 전체 | 78개 |
-| options | 세트 구성 선택지 (드링크/사이드) | 41개 |
-| set_menus | 버거별 세트 구성 및 가격 | 23개 |
-| cart | 주문 중인 장바구니 | - |
-| orders | 결제 완료된 주문 내역 | - |
-
-> **set_options 테이블을 제거한 이유**
-> 롯데리아의 모든 세트는 동일한 음료/사이드 옵션을 제공하므로 세트별 옵션 연결 테이블이 불필요했습니다.
-> 세트 주문 시 cart 테이블의 drink_option, side_option 컬럼에 선택값을 저장하는 방식으로 단순화했습니다.
-
-> **sessions 테이블을 제거한 이유**
-> 인메모리 대화 히스토리(`defaultdict`)가 current_state, last_recommended 역할을 대신하므로 불필요했습니다.
-
-### 테이블 상세 구조
-
-**menu 테이블**
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| id | INTEGER | 카테고리별 100번대 고유 ID |
-| category | TEXT | 버거/디저트/치킨/음료/아이스샷/토핑 |
-| name | TEXT | 메뉴명 |
-| badge | TEXT | 뱃지 배열 JSON (예: ["NEW", "BEST"]) |
-| price | INTEGER | 단품 가격 (정수) |
-| description | TEXT | 메뉴 설명 |
-| img_url | TEXT | 이미지 URL |
-| allergy | TEXT | 알레르기 배열 JSON (예: ["달걀", "밀"]) |
-| origin | TEXT | 원산지 정보 |
-| nutrition | TEXT | 영양정보 딕셔너리 JSON |
-| spicy_level | INTEGER | 매운맛 단계 (0~3) |
-
-**options 테이블**
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| option_id | TEXT | D01~D20 (드링크), S01~S21 (사이드) |
-| option_type | TEXT | 드링크 / 사이드 |
-| menu_id | INTEGER | menu 테이블 참조 |
-| extra_price | INTEGER | 기본 옵션 대비 추가 금액 |
-
-**set_menus 테이블**
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| set_id | INTEGER | 세트 고유 ID (자동 증가) |
-| burger_menu_id | INTEGER | menu 테이블의 버거 ID 참조 |
-| name | TEXT | 세트명 |
-| set_price | INTEGER | 세트 가격 (단품 + 2,000원) |
-| description | TEXT | 세트 설명 |
-| img_url | TEXT | 세트 이미지 URL |
-| allergy | TEXT | 알레르기 정보 |
-| origin | TEXT | 원산지 정보 |
-| calorie | TEXT | 열량 범위 (예: 706kcal ~ 1431kcal) |
-
-**cart 테이블**
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| cart_id | INTEGER | 장바구니 항목 ID (자동 증가) |
-| session_id | TEXT | 세션 ID |
-| menu_id | INTEGER | menu 테이블 참조 |
-| is_set | INTEGER | 세트 여부 (0=단품, 1=세트) |
-| drink_option | TEXT | 선택한 드링크 option_id |
-| side_option | TEXT | 선택한 사이드 option_id |
-| quantity | INTEGER | 수량 |
-| unit_price | INTEGER | 단가 |
-
-**orders 테이블**
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| order_id | INTEGER | 주문 ID (자동 증가) |
-| session_id | TEXT | 세션 ID |
-| total_price | INTEGER | 총 결제 금액 |
-| payment_method | TEXT | 결제 수단 |
-| status | TEXT | pending → paid |
-| created_at | TEXT | 주문 시각 |
-
-### 메뉴 ID 체계
-
-| 카테고리 | ID 범위 |
-|----------|---------|
-| 버거 | 101 ~ 199 |
-| 디저트 | 201 ~ 299 |
-| 치킨 | 301 ~ 399 |
-| 음료 | 401 ~ 499 |
-| 아이스샷 | 501 ~ 599 |
-| 토핑 | 601 ~ 699 |
-
----
-
-## 4. API 명세
-
-서버 실행:
+### 서버 실행
 ```bash
 python -m uvicorn api.main:app --reload
 ```
 
 Swagger UI: http://127.0.0.1:8000/docs
 
-### 메뉴
-| Method | URL | 설명 |
-|--------|-----|------|
-| GET | /menu | 전체 메뉴 조회 |
-| GET | /menu?category=버거 | 카테고리 필터 |
-| GET | /menu?q=불고기 | 키워드 검색 |
-| GET | /menu/{id} | 단건 조회 |
-| GET | /menu/{id}/set | 버거 ID로 세트 조회 |
+---
 
-### 장바구니
-| Method | URL | 설명 |
-|--------|-----|------|
-| GET | /cart/{session_id} | 장바구니 조회 |
-| POST | /cart | 장바구니 담기 |
-| PUT | /cart/{cart_id} | 수량 직접 수정 |
-| PATCH | /cart/{cart_id}/increase | 수량 +1 |
-| PATCH | /cart/{cart_id}/decrease | 수량 -1 (1이면 자동 삭제) |
-| DELETE | /cart/{cart_id} | 항목 삭제 |
-| DELETE | /cart/session/{session_id} | 전체 비우기 |
+## 데이터 구조
 
-### 주문
-| Method | URL | 설명 |
-|--------|-----|------|
-| POST | /order | 주문 생성 |
-| POST | /order/{order_id}/payment | 결제 |
-| GET | /order/{session_id} | 주문 내역 조회 |
+### SQLite (ria_menu.db)
 
-### RAG 검색
-| Method | URL | 설명 |
-|--------|-----|------|
-| POST | /search | 자연어 메뉴 검색 |
+| 테이블 | 역할 | 데이터 수 |
+|--------|------|-----------|
+| menu | 단품 메뉴 | 78개 |
+| set_menus | 버거별 세트 구성 및 가격 | 23개 |
+| options | 드링크/사이드 옵션 | 41개 |
+| cart | 세션별 장바구니 | - |
+| orders | 결제 완료 주문 내역 | - |
+
+### ChromaDB
+- 임베딩 모델: `jhgan/ko-sroberta-multitask`
+- 저장 형식: 메뉴명·설명·원산지를 `page_content`로, 가격·카테고리·알레르기·뱃지를 `metadata`로 분리 저장
+- 유사도 기준: cosine distance
 
 ---
 
-## 5. 입력 필터링
+## AI 에이전트 Tool 목록
 
-### 1차 — 백엔드 미들웨어
-- 모든 POST 요청의 text/query/message 필드 검사
-- 욕설 감지 시 LLM 호출 없이 즉시 400 반환
-
-### 2차 — WebSocket 수신 단계
-- STT 결과를 에이전트 전달 전 체크
-- 욕설 감지 시 에이전트 호출 없이 음성 응답만 반환
-
-### 3차 — AI 시스템 프롬프트
-- 주문 외 발화("날씨 어때", "심심해" 등)
-- LLM이 의미 판단 → "주문만 도와드릴 수 있어요" 응답
-
----
-
-## 6. 전체 파이프라인 테스트
-
-프론트엔드 없이 파이프라인(STT → 에이전트 → TTS)이 정상 동작하는지 확인하는 테스트 스크립트입니다.
-
-```bash
-# 서버 실행
-uvicorn api.main:app --reload
-
-# 파이프라인 테스트 (별도 터미널)
-python test_pipeline.py
-
-# TTS 음성까지 로컬 스피커로 재생
-python test_pipeline.py --play-audio
-```
-
-출력 예시:
-```
-[STT]  불고기버그 하나 담아줘
-[정제] 불고기버거 하나 담아줘
-[음성] 불고기버거를 장바구니에 담았습니다. 다른 메뉴도 추가하시겠어요?
-```
+| 분류 | 함수 | 기능 |
+|------|------|------|
+| 메뉴 | `search_menu` | 자연어 기반 메뉴 검색 (벡터+SQL 하이브리드) |
+| 메뉴 | `get_menu_info` | 특정 메뉴 가격·설명 조회 |
+| 메뉴 | `get_menu_by_price` | 가격 기준 조회 |
+| 메뉴 | `get_menu_by_nutrition` | 영양소(칼로리/당류/단백질) 기준 조회 |
+| 메뉴 | `get_set_info` | 세트 메뉴 정보 및 옵션 조회 |
+| 장바구니 | `add_to_cart` | 메뉴 추가 |
+| 장바구니 | `update_cart_quantity` | 수량 변경 |
+| 장바구니 | `remove_from_cart` | 항목 제거 |
+| 장바구니 | `upgrade_to_set` | 단품 → 세트 전환 |
+| 장바구니 | `downgrade_to_single` | 세트 → 단품 전환 |
+| 장바구니 | `view_cart` / `clear_cart` | 조회 / 전체 비우기 |
+| 주문 | `confirm_order` | 주문 완료 및 결제 처리 |
 
 ---
 
-## 7. 프로젝트 구조
+## 프로젝트 구조
 
 ```
 sadollar-kiosk/
