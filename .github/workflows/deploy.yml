@@ -15,9 +15,11 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_KEY }}
+          command_timeout: 60m
           script: |
             cd ~/sadollar-kiosk
-            git pull origin deploy/#3
+            git fetch origin
+            git reset --hard origin/deploy/#3
             source venv/bin/activate
             pip install -r requirements.txt
             sudo systemctl restart sadollar
