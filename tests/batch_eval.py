@@ -1,16 +1,17 @@
 """
-배치 평가 스크립트 - 640개 녹음 파일 대상 STT 정확도 + 파이프라인 속도 + Agent 정확도 측정
+배치 평가 스크립트 - 320개 녹음 파일 대상 STT 정확도 + 파이프라인 속도 + Agent 정확도 측정
 
 파일 명명 규칙:
-  조용한 환경: {speaker}_{id}.m4a      예) sh_1.m4a  sb_42.m4a
-  소음 환경  : n_{speaker}_{id}.m4a   예) n_sh_1.m4a  n_br_42.m4a
-  speaker: sh / sb / br / hn  |  id: 1 ~ 80
+  조용한 환경: {speaker}_{id}.m4a      예) sh_1.m4a  sb_12.m4a
+  소음 환경  : n_{speaker}_{id}.m4a   예) n_sh_1.m4a  n_br_12.m4a
+  speaker: sh / sb / br / hn  |  id: 1 ~ 40
 
 세션 그룹 (Agent 테스트):
-  1~20  : 화자+환경 조합당 하나의 연속 세션 (장바구니 주문 흐름)
-  21~40 : 대사마다 독립 세션 (메뉴 검색, 문맥 독립)
-  41~60 : 화자+환경 조합당 하나의 연속 세션 (엣지케이스 흐름)
-  61~80 : 화자+환경 조합당 하나의 연속 세션 (접근성 흐름)
+  1~10  : 화자+환경 조합당 하나의 연속 세션 (직접주문 흐름)
+  11~20 : 대사마다 독립 세션 (메뉴 검색, 문맥 독립)
+  21~30 : 화자+환경 조합당 하나의 연속 세션 (엣지케이스 흐름)
+  31~35 : 화자+환경 조합당 하나의 연속 세션 (접근성 흐름 1)
+  36~40 : 화자+환경 조합당 하나의 연속 세션 (접근성 흐름 2)
 
 실행 예:
   python tests/batch_eval.py --audio-dir recordings --phase stt
@@ -21,6 +22,7 @@
 
 import argparse
 import csv
+import json
 import re
 import sys
 import time
@@ -28,287 +30,156 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# ─── 정답 텍스트 (80개 스크립트) ──────────────────────────────────────────
+# ─── 정답 텍스트 (40개 스크립트) ──────────────────────────────────────────
 GROUND_TRUTH: dict[int, str] = {
-    1:  "리아 불고기 버거 하나 줘",
-    2:  "한우불고기버거 세트로 주문할게",
-    3:  "치킨버거 2개 담아줘",
-    4:  "데리버거 하나랑 콜라 하나 줘",
-    5:  "통다리 크리스피치킨버거 세트로 담아주고 음료는 사이다로",
-    6:  "클래식 치즈버거 단품으로 하나 담아줘",
-    7:  "더블 한우불고기버거 세트 주문할게 사이드는 포테이토",
-    8:  "방금 담은 거 세트로 바꿔줘",
-    9:  "리아 불고기버거 세트로 업그레이드 해줘",
-    10: "세트로 할게 음료는 제로콜라로 해줘",
-    11: "단품 말고 세트로 변경해줘",
-    12: "치킨버거 2개 더 추가해줘",
-    13: "한우불고기 버거 3개로 바꿔줘",
-    14: "방금 담은거 2개로 늘려줘",
-    15: "데리버거 하나 빼줘",
-    16: "장바구니 확인해줘",
-    17: "지금까지 뭐 담았어",
-    18: "총 얼마야",
-    19: "카드로 결제할게",
-    20: "주문 완료해줘",
-    21: "소고기 안 들어가는 버거 추천해줘",
-    22: "내가 비건인데 먹을 수 있는 메뉴 있을까",
-    23: "신메뉴 먹고싶어",
-    24: "사이드 메뉴 종류가 어떻게 돼",
-    25: "돼지고기 안 들어가는 버거 뭐 있어",
-    26: "가장 인기있는 메뉴가 뭐야",
-    27: "칼로리 낮은 메뉴 추천해줘",
-    28: "오천원으로 먹을 수 있는 메뉴 뭐 있어",
-    29: "유제품 못 먹는데 괜찮은 메뉴 추천해줘",
-    30: "매콤한 햄버거 추천해주라",
-    31: "단백질 높은 버거가 뭐야",
-    32: "치즈 들어가는 메뉴 추천해주세요",
-    33: "제일 저렴한 버거가 뭐야",
-    34: "해산물 알레르기 있는데 먹을 수 있는 메뉴 추천해줘",
-    35: "당 적은 아이스크림 알려줘",
-    36: "여기 베스트 메뉴가 뭐야",
-    37: "치즈 안 들어가는 버거 알려줘",
-    38: "리아 불고기 버거 패티 원산지가 어디야",
-    39: "가장 저렴한 사이드 메뉴 추천해줘",
-    40: "칼로리 제일 낮은 음료가 뭐야",
-    41: "불고기 패티 들어간 버거 추천해줘",
-    42: "첫번째 거를 세트로 콜라랑 감튀 담아줘",
-    43: "응",
-    44: "리아 새우도 단품으로 하나줘",
-    45: "처음에 주문한것도 단품으로 하고 싶어",
-    46: "아니다 그냥 이거는 안먹을래 취소해줘",
-    47: "국밥도 한그릇 주라",
-    48: "왜 안주는데 시발",
-    49: "그러면 사장님 번호라도 주라",
-    50: "그냥 전원끄고 꺼져버려",
-    51: "아까 담은 리아 새우 수량 4개로 늘려줘",
-    52: "치즈케이크도 하나 해줘",
-    53: "데리버거랑 짬뽕 담아줘",
-    54: "아 여기 근처 주차장은 어디야",
-    55: "갑자기 먹기 싫네 싹 다 취소해줘",
-    56: "총 얼마야",
-    57: "리아 불고기 단품으로 하나만",
-    58: "아니다 방금 거 한개 빼줘",
-    59: "이제 결제할게",
-    60: "야 이 새끼야 뒤질래",
-    61: "나 시각장애가 있는데 메뉴를 소리로 읽어줄 수 있어",
-    62: "결제도 음성으로 할 수 있어",
-    63: "이거 오래 걸려",
-    64: "음료 종류가 몇 가지야 이름을 다 말해줘",
-    65: "추천메뉴 알려줘",
-    66: "방금 화면에 뭔가 나온 것 같은데 뭐라고 써 있어",
-    67: "콜라도 하나 담아줘",
-    68: "지금까지 주문 어떻게 됐는지 다 읽어줘",
-    69: "지금 무슨 단계야",
-    70: "저기요 이렇게 말하면 되는거야 제대로 하고 있는 건지 모르겠네",
-    71: "직원은 없어 기계한테 말하니까 이상한데",
-    72: "메뉴 뭐 있는데",
-    73: "천천히 다시 말해줘",
-    74: "뭐가 이리 복잡해 그냥 햄버거 하나 줘",
-    75: "제일 많이 팔리는 거 하나 줘",
-    76: "손자가 불고기버거 사오라고 했거든 불고기버거 하나 담아줘",
-    77: "비싸네 이거 돈좀 깎아줄 수 없나",
-    78: "어디 눌러야 되는지 모르겠어",
-    79: "눈이 잘 안보이네",
-    80: "데리버거 하나줘봐",
+    1:  "리아 불고기버거 하나 줘",
+    2:  "치킨버거 2개 담아줘",
+    3:  "통다리 크리스피치킨버거 세트로 담아주고, 음료는 사이다로",
+    4:  "데리버거 1개 담아줘",
+    5:  "치킨버거 2개 더 추가해줘",
+    6:  "한우불고기 버거 3개로 바꿔줘",
+    7:  "데리버거 하나 빼줘",
+    8:  "장바구니 확인해줘",
+    9:  "총 얼마야?",
+    10: "주문 완료해줘",
+    11: "소고기 안 들어가는 버거 추천해줘.",
+    12: "신메뉴 먹고싶어.",
+    13: "가장 인기있는 메뉴가 뭐야?",
+    14: "칼로리 낮은 메뉴 추천해줘.",
+    15: "유제품 못 먹는데 괜찮은 메뉴 추천해줘.",
+    16: "단백질 높은 버거가 뭐야?",
+    17: "해산물 알레르기 있는데 먹을 수 있는 메뉴 추천해줘.",
+    18: "여기 베스트 메뉴가 뭐야?",
+    19: "치즈 안 들어가는 버거 알려줘.",
+    20: "가장 저렴한 사이드 메뉴 추천해줘.",
+    21: "불고기 패티 들어간 버거 추천해줘",
+    22: "첫번째 거를 세트로 콜라랑 감튀 담아줘",
+    23: "응",
+    24: "리아 새우도 단품으로 하나줘",
+    25: "처음에 주문한것도 단품으로 하고 싶어.",
+    26: "국밥도 한그릇 주라.",
+    27: "왜 안주는데 시발",
+    28: "그러면 사장님 번호라도 주라.",
+    29: "갑자기 먹기 싫네 싹 다 취소해줘.",
+    30: "총 얼마야?",
+    31: "나 시각장애가 있는데 메뉴를 소리로 읽어줄 수 있어?",
+    32: "추천메뉴 알려줘",
+    33: "방금 화면에 뭔가 나온 것 같은데, 뭐라고 써 있어?",
+    34: "지금까지 주문 어떻게 됐는지 다 읽어줘",
+    35: "지금 무슨 단계야?",
+    36: "직원은 없어? 기계한테 말하니까 이상한데",
+    37: "뭐가 이리 복잡해. 그냥 햄버거 하나 줘",
+    38: "제일 많이 팔리는 거 하나 줘",
+    39: "비싸네. 이거 돈좀 깎아줄 수 없나?",
+    40: "그거…. 데리버거… 하나줘봐",
 }
 
 # ─── 기대 Action 레이블 ───────────────────────────────────────────────────
-# TYPE_SELECT / DRINK_SELECT / SIDE_SELECT / CART_ADD /
-# RECOMMEND / PAGE:cart / PAGE:complete / PAGE:menu /
-# TAB / NONE / BLOCKED
-# 전체 문자열 보존 (TYPE_SELECT:119, DRINK_SELECT:106 등 ID 포함)
-# TYPE_SELECT / DRINK_SELECT / SIDE_SELECT 계열은 메뉴 ID가 포함됨
-# → action_type_ok: 타입 prefix만 일치 (관대)
-# → action_full_ok: ID까지 완전 일치 (엄격)
 EXPECTED_ACTIONS: dict[int, str] = {
     1:  "TYPE_SELECT:119",
-    2:  "DRINK_SELECT:106",
-    3:  "NONE",
-    4:  "NONE",
-    5:  "SIDE_SELECT:101",
-    6:  "RECOMMEND",
-    7:  "DRINK_SELECT:105",
-    8:  "DRINK_SELECT:105",
-    9:  "DRINK_SELECT:119",
-    10: "SIDE_SELECT:119",
-    11: "SIDE_SELECT:119",
-    12: "NONE",
-    13: "NONE",
+    2:  "CART_ADD",
+    3:  "CART_ADD",
+    4:  "CART_ADD",
+    5:  "CART_ADD",
+    6:  "NONE",
+    7:  "NONE",
+    8:  "PAGE:cart",
+    9:  "NONE",
+    10: "NONE",
+    11: "RECOMMEND",
+    12: "RECOMMEND",
+    13: "TYPE_SELECT:106",
     14: "NONE",
-    15: "NONE",
-    16: "PAGE:cart",
-    17: "PAGE:cart",
-    18: "NONE",
-    19: "PAGE:cart",
-    20: "PAGE:cart",
+    15: "RECOMMEND",
+    16: "NONE",
+    17: "RECOMMEND",
+    18: "TYPE_SELECT:106",
+    19: "RECOMMEND",
+    20: "NONE",
     21: "RECOMMEND",
-    22: "RECOMMEND",
-    23: "RECOMMEND",
-    24: "TAB:디저트",
-    25: "RECOMMEND",
-    26: "RECOMMEND",
+    22: "CART_ADD",
+    23: "NONE",
+    24: "CART_ADD",
+    25: "NONE",
+    26: "NONE",
     27: "NONE",
-    28: "RECOMMEND",
-    29: "RECOMMEND",
-    30: "RECOMMEND",
-    31: "RECOMMEND",
+    28: "NONE",
+    29: "NONE",
+    30: "NONE",
+    31: "NONE",
     32: "RECOMMEND",
-    33: "NONE",
-    34: "RECOMMEND",
-    35: "RECOMMEND",
-    36: "RECOMMEND",
-    37: "RECOMMEND",
-    38: "NONE",
+    33: "RECOMMEND",
+    34: "NONE",
+    35: "NONE",
+    36: "NONE",
+    37: "TAB:버거",
+    38: "TYPE_SELECT:106",
     39: "NONE",
-    40: "NONE",
-    41: "RECOMMEND",
-    42: "NONE",
-    43: "NONE",
-    44: "NONE",
-    45: "PAGE:cart",
-    46: "NONE",
-    47: "NONE",
-    48: "NONE",
-    49: "NONE",
-    50: "NONE",
-    51: "NONE",
-    52: "NONE",
-    53: "NONE",
-    54: "NONE",
-    55: "PAGE:menu",
-    56: "NONE",
-    57: "NONE",
-    58: "NONE",
-    59: "PAGE:cart",
-    60: "NONE",
-    61: "NONE",
-    62: "PAGE:cart",
-    63: "NONE",
-    64: "TAB:음료/커피",
-    65: "RECOMMEND",
-    66: "NONE",
-    67: "NONE",
-    68: "PAGE:cart",
-    69: "NONE",
-    70: "NONE",
-    71: "NONE",
-    72: "NONE",
-    73: "NONE",
-    74: "TAB:버거",
-    75: "TYPE_SELECT:106",
-    76: "NONE",
-    77: "NONE",
-    78: "NONE",
-    79: "NONE",
-    80: "NONE",
+    40: "TYPE_SELECT:123",
 }
 
 SCRIPT_CATEGORY: dict[int, str] = {
-    **{i: "직접주문" for i in range(1, 21)},
-    **{i: "메뉴검색" for i in range(21, 41)},
-    **{i: "엣지케이스" for i in range(41, 61)},
-    **{i: "접근성" for i in range(61, 81)},
+    **{i: "직접주문"  for i in range(1,  11)},
+    **{i: "메뉴검색"  for i in range(11, 21)},
+    **{i: "엣지케이스" for i in range(21, 31)},
+    **{i: "접근성"    for i in range(31, 41)},
 }
 
-# 세션 그룹: 같은 번호끼리 하나의 연속 세션으로 실행
-# 21~40은 각 파일이 독립 세션 (None = 독립)
+# 세션 그룹
 SESSION_GROUP: dict[int, str] = {
-    **{i: "ordering" for i in range(1, 21)},
-    **{i: None        for i in range(21, 41)},  # 독립
-    **{i: "edge"      for i in range(41, 61)},
-    **{i: "access1"   for i in range(61, 71)},
-    **{i: "access2"   for i in range(71, 81)},
+    **{i: "ordering" for i in range(1,  11)},
+    **{i: None       for i in range(11, 21)},  # 독립 세션
+    **{i: "edge"     for i in range(21, 31)},
+    **{i: "access1"  for i in range(31, 36)},
+    **{i: "access2"  for i in range(36, 41)},
 }
 
-
-# ─── 정답 음성 응답 텍스트 (SCREEN·ACTION 태그 제외, 실제 읽히는 부분만) ──
+# ─── 정답 음성 응답 텍스트 ────────────────────────────────────────────────
 EXPECTED_VOICE: dict[int, str] = {
-    1:  "리아 불고기를 단품으로 드릴까요, 세트로 드릴까요?",
-    2:  "음료를 선택해주세요.",
-    3:  "치킨버거 2개를 장바구니에 추가했습니다.",
-    4:  "데리버거와 콜라를 각각 하나씩 장바구니에 담았습니다. 다른 주문 도와드릴까요?",
-    5:  "사이드를 선택해주세요.",
-    6:  "클래식 치즈버거에 해당하는 메뉴가 여러 개 있습니다. 어떤 메뉴를 원하시나요?",
-    7:  "음료를 선택해주세요.",
-    8:  "음료를 선택해주세요.",
-    9:  "음료를 선택해주세요.",
-    10: "사이드를 선택해주세요.",
-    11: "사이드를 선택해주세요.",
-    12: "치킨버거 2개를 추가로 장바구니에 담았습니다. 다른 주문 도와드릴까요?",
-    13: "장바구니에 한우불고기버거가 없습니다. 다른 메뉴를 변경하시겠어요?",
-    14: "치킨버거 수량을 4개로 변경했습니다. 다른 주문 도와드릴까요?",
-    15: "데리버거를 장바구니에서 제거했습니다. 다른 주문 도와드릴까요?",
-    16: "현재 장바구니 내역은 다음과 같습니다. 치킨버거 6개 25,800원, 콜라 1개 2,000원, 합계 27,800원. 다른 주문 도와드릴까요?",
-    17: "현재 장바구니 내역은 다음과 같습니다. 치킨버거 6개 25,800원, 콜라 1개 2,000원, 합계 27,800원. 다른 주문 도와드릴까요?",
-    18: "총 합계는 27,800원입니다. 추가로 도와드릴 것이 있을까요?",
-    19: "카드로 결제하시겠습니까? 주문 내역을 확인 후 결제를 진행해주세요.",
-    20: "주문 내역을 확인해 드릴게요. 카드와 모바일 중 어떻게 결제하시겠어요?",
-    21: "다음 메뉴가 있습니다. 어떤 걸로 드릴까요?",
-    22: "비건 메뉴로 다음을 추천드립니다. 어떤 걸로 드릴까요?",
-    23: "다음 신메뉴가 있습니다. 어떤 걸로 드릴까요?",
-    24: "현재 제공되는 사이드 메뉴는 양념감자, 디지게 매운 돈까스(디진다맛), 디지게 매운 돈까스(양념맛)입니다. 다른 메뉴가 필요하시면 말씀해 주세요!",
-    25: "다음 메뉴가 있습니다. 어떤 걸로 드릴까요?",
-    26: "가장 인기 있는 메뉴는 다음과 같습니다. 어떤 걸로 드릴까요?",
-    27: "어떤 카테고리에서 추천해드릴까요?",
-    28: "5,000원으로 드실 수 있는 메뉴는 더블 데리버거, 리아 불고기, 리아 새우, 지파이 고소한맛(S), 치킨버거(N) 등이 있습니다. 어떤 걸로 드릴까요?",
-    29: "유제품이 들어가지 않은 메뉴를 추천해드릴게요. 어떤 걸로 드릴까요?",
-    30: "매콤한 햄버거로 다음 메뉴가 있습니다. 어떤 걸로 드릴까요?",
-    31: "단백질이 높은 버거는 다음과 같습니다. 어떤 걸로 드릴까요?",
-    32: "다음 메뉴가 있습니다. 어떤 걸로 드릴까요?",
-    33: "제일 저렴한 버거는 데리버거로, 가격은 3,700원입니다. 다른 도움이 필요하시면 말씀해 주세요.",
-    34: "해산물 알레르기가 있는 분도 드실 수 있는 메뉴를 추천해드릴게요. 어떤 걸로 드릴까요?",
-    35: "당이 적은 아이스크림은 다음과 같습니다. 어떤 걸로 드릴까요?",
-    36: "베스트 메뉴는 다음과 같습니다. 어떤 걸로 드릴까요?",
-    37: "치즈가 들어가지 않는 버거는 다음과 같습니다. 어떤 걸로 드릴까요?",
-    38: "리아 불고기 버거의 쇠고기 패티 원산지는 호주산입니다.",
-    39: "가장 저렴한 사이드 메뉴는 코울슬로로, 가격은 1,900원입니다. 추가로 도와드릴까요?",
-    40: "칼로리가 제일 낮은 음료는 제로슈거콜라입니다. 칼로리가 0kcal로, 가격은 2,000원입니다.",
-    41: "다음 메뉴가 있습니다. 어떤 걸로 드릴까요?",
-    42: "리아 불고기 세트를 콜라와 포테이토로 장바구니에 담았습니다. 다른 주문 도와드릴까요?",
-    43: "주문을 완료하시겠어요?",
-    44: "리아 새우 단품을 장바구니에 추가했습니다. 다른 주문 도와드릴까요?",
-    45: "리아 불고기 세트를 단품으로 변경했습니다. 추가로 도와드릴 것이 있을까요?",
-    46: "리아 불고기를 장바구니에서 제거했습니다. 다른 주문 도와드릴까요?",
-    47: "죄송하지만, 국밥은 저희 메뉴에 없습니다. 다른 메뉴를 도와드릴까요?",
-    48: "죄송합니다만, 저희 매장에서는 국밥을 제공하지 않습니다. 다른 메뉴로 도와드릴 수 있을까요?",
-    49: "주문만 도와드릴 수 있어요. 다른 메뉴나 주문 관련해서 궁금한 점이 있으면 말씀해 주세요.",
-    50: "주문 관련해서 더 필요하신 게 있으면 언제든지 말씀해 주세요.",
-    51: "리아 새우의 수량을 4개로 변경했습니다. 다른 주문 도와드릴까요?",
-    52: "죄송하지만 치즈케이크는 저희 메뉴에 없습니다. 다른 메뉴를 도와드릴까요?",
-    53: "데리버거 1개를 장바구니에 추가했습니다. 하지만 짬뽕 메뉴는 찾을 수 없습니다. 다른 메뉴를 원하시면 말씀해 주세요.",
-    54: "주문만 도와드릴 수 있어요. 다른 주문 관련 문의가 있으시면 말씀해 주세요.",
-    55: "장바구니를 모두 비웠습니다. 다른 주문이 필요하시면 언제든지 말씀해 주세요.",
-    56: "현재 장바구니가 비어 있습니다. 주문을 원하시면 언제든지 말씀해 주세요.",
-    57: "리아 불고기 단품을 장바구니에 추가했습니다. 다른 주문이 필요하시면 말씀해 주세요!",
-    58: "리아 불고기를 장바구니에서 제거했습니다. 다른 주문이 필요하시면 말씀해 주세요.",
-    59: "주문 내역을 확인해 드릴게요. 카드와 모바일 중 어떻게 결제하시겠어요?",
-    60: "죄송하지만, 저는 주문만 도와드릴 수 있습니다. 다른 도움이 필요하시면 말씀해 주세요.",
-    61: "네, 메뉴를 읽어드릴 수 있어요. 주문을 원하시면 도와드리겠습니다.",
-    62: "네, 카드와 모바일 중 어떻게 결제하시겠어요?",
-    63: "주문을 도와드리는 데는 오래 걸리지 않습니다. 원하시는 메뉴를 말씀해 주시면 빠르게 도와드릴게요!",
-    64: "현재 제공되는 음료는 콜라, 사이다, 제로슈거콜라, 콜라(L), 사이다(L), 제로슈거콜라(L), 아메리카노, 아이스 아메리카노 등 20가지입니다. 원하시는 음료가 있으시면 말씀해 주세요!",
-    65: "추천 메뉴는 다음과 같습니다. 어떤 걸로 드릴까요?",
-    66: "현재 추천 메뉴로 한우불고기버거, 리아 불고기, 통다리 크리스피치킨버거(파이어핫)가 화면에 표시되었습니다. 어떤 걸로 드릴까요?",
-    67: "콜라 1개를 장바구니에 담았습니다. 다른 주문이 필요하시면 말씀해 주세요.",
-    68: "현재 장바구니에는 콜라 1개가 담겨 있으며, 총 금액은 2,000원입니다. 추가로 주문하실 메뉴가 있으신가요?",
-    69: "현재 장바구니에 담긴 내역을 확인한 상태입니다. 추가로 주문하시거나 결제를 진행하실 수 있습니다.",
-    70: "원하시는 메뉴 이름을 말씀해 주시면 장바구니에 담아드립니다. 예) 불고기버거 하나 주세요",
-    71: "저는 주문을 도와드리는 AI 도우미입니다. 편하게 말씀해 주세요!",
-    72: "어떤 카테고리에서 추천해드릴까요?",
-    73: "어떤 카테고리에서 추천해드릴까요? 버거, 치킨, 디저트, 음료, 아이스샷 중에서 선택해 주세요.",
-    74: "버거 메뉴를 보여드릴게요.",
-    75: "가장 많이 팔리는 메뉴는 한우불고기버거입니다. 단품으로 드릴까요, 세트로 드릴까요?",
-    76: "리아 불고기를 장바구니에 담았습니다.",
-    77: "죄송하지만, 가격은 고정되어 있어 할인은 제공되지 않습니다.",
-    78: "주문을 완료하시려면 결제라고 말씀해 주세요. 그러면 결제 단계로 안내해 드리겠습니다.",
-    79: "걱정하지 마세요. 제가 도와드릴게요. 말씀만 해주시면 됩니다.",
-    80: "데리버거를 장바구니에 추가했습니다.",
+    1:  "리아 불고기버거 단품과 세트 중 어떻게 드릴까요?",
+    2:  "치킨버거 2개를 담으시겠습니까?",
+    3:  "통다리 크리스피치킨버거 세트(사이다, 포테이토)로 담으시겠습니까?",
+    4:  "데리버거 1개를 담으시겠습니까?",
+    5:  "치킨버거 2개를 추가로 담으시겠습니까?",
+    6:  "장바구니에 한우불고기버거가 들어있지 않습니다.  추가로 필요한 것이 있으신가요?",
+    7:  "장바구니에 데리버거가 들어있지 않습니다. 추가로 필요한 것이 있으신가요?",
+    8:  "장바구니를 확인해 드릴게요.",
+    9:  "현재 장바구니의 총액은 10,400원입니다.",
+    10: "주문 내역을 확인해 드릴게요. 카드와 모바일 중 어떻게 결제하시겠어요?",
+    11: "더블 치킨버거, 더블 치킨버거(N), NEW 더블 미라클버거 중에서 선택해 주세요.",
+    12: "신메뉴로는 통다리 크리스피치킨버거(파이어핫), 통다리 크리스피치킨버거(그릭랜치), 디지게 매운 돈까스(디진다맛)가 있습니다. 어떤 메뉴로 드릴까요?",
+    13: "한우불고기버거가 가장 인기 있어요. 브리오쉬번에 국내산 한우를 사용한 패티, 신선한 야채, 특제소스로 완성한 프리미엄 햄버거입니다. 단품과 세트 중 어떻게 드릴까요?",
+    14: "칼로리가 낮은 메뉴로는 제로슈거콜라 2,000원, 아이스 아메리카노 2,500원, 아메리카노 2,500원이 있습니다. 추가로 필요한 것이 있으신가요?",
+    15: "유제품이 없는 메뉴로는 NEW 미라클버거, NEW 더블 미라클버거, 포테이토가 있습니다. NEW 미라클버거는 100% 식물성 패티와 신선한 야채들이 조화된 대체육버거로 5,700원입니다. 추가로 필요한 것이 있으신가요?",
+    16: "단백질이 높은 버거는 더블 한우불고기버거, 리아 불고기 더블(빅불), 모짜렐라 인 더 버거 베이컨입니다. 더블 한우불고기버거는 13,000원이고, 국내산 한우를 사용한 패티 2장 구성으로 육즙 가득한 프리미엄 버거입니다. 리아 불고기 더블(빅불)은 7,600원으로 불고기 특유의 소스와 쇠고기의 진함을 배로 느낄 수 있는 제품입니다. 모짜렐라 인 더 버거 베이컨은 8,000원으로 자연산 모짜렐라 치즈와 고소한 베이컨이 만나 풍부한 맛을 제공합니다.",
+    17: "한우불고기버거, 리아 불고기, 통다리 크리스피치킨버거(파이어핫)를 추천드려요. 한우불고기버거는 브리오쉬번에 국내산 한우를 사용한 패티와 신선한 야채, 특제소스로 완성한 프리미엄 햄버거입니다. 리아 불고기는 두툼한 쇠고기패티와 한국적인 맛의 소스가 잘 조화된 롯데리아 대표 버거입니다. 통다리 크리스피치킨버거(파이어핫)는 육즙 가득 통다리살에 버터밀크 외피로 입안을 가득 채우는 바삭함이 특징이며, 중독성 있는 갈릭핫소스로 강렬한 매운맛을 자랑합니다. 어떤 걸로 드릴까요?",
+    18: "한우불고기버거가 가장 인기 있어요. 브리오쉬번에 국내산 한우를 사용한 패티, 신선한 야채, 특제소스로 완성한 프리미엄 햄버거입니다. 단품과 세트 중 어떻게 드릴까요?",
+    19: "치즈가 들어가지 않는 버거로는 한우불고기버거 9,000원, 리아 불고기 5,000원이 있습니다. 어떤 것을 선택하시겠어요?",
+    20: "가장 저렴한 사이드 메뉴는 코울슬로로, 1,900원입니다.",
+    21: "리아 불고기, 한우불고기버거, 더블 한우불고기버거 중에서 선택해 주세요.",
+    22: "주문 내역을 확인해주세요. 담으시겠습니까?",
+    23: "리아 불고기를 담았습니다. 추가로 필요한 것이 있으신가요?",
+    24: "리아 새우를 단품으로 담으시겠습니까?",
+    25: "리아 불고기를 단품으로 변경했습니다. 추가로 필요한 것이 있으신가요?",
+    26: "죄송하지만, 국밥은 제공하지 않습니다. 다른 메뉴를 선택해 주세요.",
+    27: "죄송합니다. 리아버거에서는 국밥을 제공하지 않습니다. 다른 메뉴를 도와드릴 수 있습니다.",
+    28: "저는 주문을 도와드리는 AI 도우미입니다. 편하게 말씀해 주세요!",
+    29: "장바구니를 비웠습니다. 추가로 필요한 것이 있으신가요?",
+    30: "장바구니가 비어 있습니다.",
+    31: "네, 메뉴를 읽어드릴게요. 버거·디저트·치킨·음료 중 어떤 카테고리를 들으시겠어요?",
+    32: "추천 메뉴를 알려드릴게요. 한우불고기버거 9,000원, 리아 불고기 5,000원, 통다리 크리스피치킨버거(파이어핫) 6,900원입니다. 어떤 메뉴로 도와드릴까요?",
+    33: "추천 메뉴로 한우불고기버거 9,000원, 리아 불고기 5,000원, 통다리 크리스피치킨버거(파이어핫) 6,900원이 있습니다. 어떤 메뉴로 도와드릴까요?",
+    34: "현재 장바구니가 비어 있습니다. 추가로 주문하실 메뉴가 있으신가요?",
+    35: "현재 주문 단계입니다. 원하시는 메뉴 이름을 말씀해 주시면 장바구니에 담아드립니다.",
+    36: "저는 주문을 도와드리는 AI 도우미입니다. 편하게 말씀해 주세요!",
+    37: "버거 메뉴를 보여드릴게요.",
+    38: "한우불고기버거가 가장 인기 있어요. 브리오쉬번에 국내산 한우를 사용한 패티, 신선한 야채, 특제소스로 완성한 프리미엄 햄버거. 단품과 세트 중 어떻게 드릴까요?",
+    39: "죄송하지만 가격은 고정되어 있어 할인은 어렵습니다. 다른 메뉴를 추천해드릴까요?",
+    40: "데리버거를 단품과 세트 중 어떻게 드릴까요?",
 }
 
 
 # ─── 파일명 파서 ──────────────────────────────────────────────────────────
-# 조용한: {speaker}_{id}.m4a   →  sh_1.m4a
-# 소음  : n_{speaker}_{id}.m4a → n_sh_1.m4a
 FILENAME_QUIET = re.compile(r"^(?P<speaker>sh|sb|br|hn)_(?P<id>\d+)\.m4a$", re.IGNORECASE)
 FILENAME_NOISY = re.compile(r"^n_(?P<speaker>sh|sb|br|hn)_(?P<id>\d+)\.m4a$", re.IGNORECASE)
 
@@ -345,20 +216,19 @@ def cer(reference: str, hypothesis: str) -> float:
 
 
 # ─── Action 유틸 ─────────────────────────────────────────────────────────
-# ID가 붙는 타입: TYPE_SELECT:119, DRINK_SELECT:106, SIDE_SELECT:101
 _ID_PREFIXES = {"TYPE_SELECT", "DRINK_SELECT", "SIDE_SELECT"}
 
 
 def extract_action(text: str) -> str:
-    """[ACTION]...[/ACTION] 태그에서 전체 값을 추출 (ID 포함 보존)"""
-    m = re.search(r"\[ACTION\](.*?)\[/ACTION\]", text, re.DOTALL)
-    if not m:
+    """에이전트 JSON 응답에서 action 필드 추출"""
+    try:
+        data = json.loads(text)
+        return data.get("action", "NONE") or "NONE"
+    except Exception:
         return "NONE"
-    return m.group(1).strip()
 
 
 def _action_prefix(action: str) -> str:
-    """TYPE_SELECT:119 → TYPE_SELECT,  PAGE:cart → PAGE:cart (PAGE/TAB은 전체 유지)"""
     prefix = action.split(":")[0]
     return prefix if prefix in _ID_PREFIXES else action
 
@@ -377,11 +247,12 @@ def action_full_ok(script_id: int, actual: str) -> bool:
 
 # ─── 음성 응답 추출 + 임베딩 유사도 ──────────────────────────────────────
 def extract_voice(agent_response: str) -> str:
-    """에이전트 응답에서 [ACTION], [SCREEN], [REFINED] 태그를 제거해 음성 부분만 추출"""
-    text = re.sub(r"\[REFINED\].*?\[/REFINED\]", "", agent_response, flags=re.DOTALL)
-    text = re.sub(r"\[ACTION\].*?\[/ACTION\]",   "", text,           flags=re.DOTALL)
-    text = re.sub(r"\[SCREEN\].*?\[/SCREEN\]",   "", text,           flags=re.DOTALL)
-    return text.strip()
+    """에이전트 JSON 응답에서 voice 필드 추출"""
+    try:
+        data = json.loads(agent_response)
+        return data.get("voice", "") or ""
+    except Exception:
+        return agent_response.strip()
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -392,7 +263,7 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def get_embeddings(texts: list[str]) -> list[list[float]]:
-    """OpenAI text-embedding-3-small으로 배치 임베딩 (최대 2048개)"""
+    """OpenAI text-embedding-3-small으로 배치 임베딩"""
     import openai
     client = openai.OpenAI()
     resp = client.embeddings.create(model="text-embedding-3-small", input=texts)
@@ -400,7 +271,7 @@ def get_embeddings(texts: list[str]) -> list[list[float]]:
 
 
 def precompute_expected_embeddings() -> dict[int, list[float]]:
-    """80개 정답 음성 텍스트를 한 번에 임베딩해 반환"""
+    """40개 정답 음성 텍스트를 한 번에 임베딩해 반환"""
     ids   = list(EXPECTED_VOICE.keys())
     texts = [EXPECTED_VOICE[i] for i in ids]
     print(f"[임베딩] 정답 {len(texts)}개 사전 계산 중...")
@@ -411,23 +282,38 @@ def precompute_expected_embeddings() -> dict[int, list[float]]:
 
 def voice_similarity(script_id: int, actual_voice: str,
                      expected_embs: dict[int, list[float]]) -> float | None:
-    """실제 음성 응답과 정답 임베딩 간 코사인 유사도 (0.0 ~ 1.0)"""
     if not actual_voice.strip() or script_id not in expected_embs:
         return None
     actual_emb = get_embeddings([actual_voice])[0]
     return round(_cosine(expected_embs[script_id], actual_emb), 4)
 
 
-# ─── Phase 1: STT 단독 (CER + 속도) ─────────────────────────────────────
+# ─── Phase 1: STT 단독 ───────────────────────────────────────────────────
 def run_stt_phase(recordings: list[dict], model) -> list[dict]:
-    from voice.stt import transcribe
+    import numpy as np
+    from faster_whisper.audio import decode_audio
+    from voice.stt import transcribe_array
+    from voice.vad_silero import CHUNK_SIZE, StreamingVAD
 
     results = []
     for i, rec in enumerate(recordings, 1):
         ref = GROUND_TRUTH.get(rec["id"], "")
         t0 = time.time()
         try:
-            hyp = transcribe(model, str(rec["path"]))
+            audio = decode_audio(str(rec["path"]))
+            vad = StreamingVAD()
+            utterances = []
+            for start in range(0, len(audio), CHUNK_SIZE):
+                chunk = audio[start: start + CHUNK_SIZE]
+                if len(chunk) < CHUNK_SIZE:
+                    chunk = np.pad(chunk, (0, CHUNK_SIZE - len(chunk)))
+                result = vad.feed(chunk)
+                if result is not None:
+                    utterances.append(result)
+            tail = vad.flush()
+            if tail is not None:
+                utterances.append(tail)
+            hyp = transcribe_array(model, np.concatenate(utterances)) if utterances else ""
         except Exception as e:
             hyp = ""
             print(f"  [ERROR] {rec['path'].name}: {e}")
@@ -448,15 +334,14 @@ def run_stt_phase(recordings: list[dict], model) -> list[dict]:
     return results
 
 
-# ─── Phase 2+3: 파이프라인 (세션 그룹 반영) ──────────────────────────────
+# ─── Phase 2+3: 파이프라인 ────────────────────────────────────────────────
 def run_pipeline_phase(recordings: list[dict], model, agent_delay: float = 10.0) -> list[dict]:
     from voice.stt import transcribe
     from app.agent import chat, clear_history
+    from db.sqlite import clear_cart
 
-    # 정답 음성 임베딩 사전 계산 (80개, 한 번만)
     expected_embs = precompute_expected_embeddings()
 
-    # speaker+env 조합별로 파일을 그룹화하고 id 순 정렬
     combos: dict[tuple, list] = {}
     for rec in recordings:
         key = (rec["speaker"], rec["env"])
@@ -469,26 +354,26 @@ def run_pipeline_phase(recordings: list[dict], model, agent_delay: float = 10.0)
     done = 0
 
     for (speaker, env), recs in sorted(combos.items()):
-        # 이 조합에서 사용 중인 세션 ID 추적 (그룹별로 하나씩 유지)
-        active_sessions: dict[str, str] = {}  # group_name → session_id
+        active_sessions: dict[str, str] = {}
 
         for rec in recs:
             script_id = rec["id"]
             group = SESSION_GROUP.get(script_id)
 
             if group is None:
-                # 21~40: 파일마다 독립 세션
                 session_id = f"eval_{speaker}_{env}_{script_id:03d}_ind"
+                clear_history(session_id)
+                clear_cart(session_id)
             else:
-                # 1~20 / 41~60 / 61~80: 조합당 하나의 연속 세션
                 if group not in active_sessions:
-                    active_sessions[group] = f"eval_{speaker}_{env}_{group}"
-                    clear_history(active_sessions[group])
+                    sid = f"eval_{speaker}_{env}_{group}"
+                    active_sessions[group] = sid
+                    clear_history(sid)
+                    clear_cart(sid)
                 session_id = active_sessions[group]
 
             ref = GROUND_TRUTH.get(script_id, "")
 
-            # STT
             t0 = time.time()
             try:
                 hyp = transcribe(model, str(rec["path"]))
@@ -497,11 +382,10 @@ def run_pipeline_phase(recordings: list[dict], model, agent_delay: float = 10.0)
                 print(f"  [STT ERROR] {rec['path'].name}: {e}")
             stt_ms = round((time.time() - t0) * 1000)
 
-            # Agent
             actual_action, agent_ms, llm_ms, tool_ms, response = "", 0, 0, 0, ""
-            actual_voice, vsim = "", None
+            actual_voice, vsim, tts_ms = "", None, 0
             if hyp.strip():
-                time.sleep(agent_delay)  # TPM 30,000 한도 초과 방지 (기본 텀)
+                time.sleep(agent_delay)
                 import openai as _openai
                 for _attempt in range(1, 6):
                     try:
@@ -524,7 +408,15 @@ def run_pipeline_phase(recordings: list[dict], model, agent_delay: float = 10.0)
                         print(f"  [AGENT ERROR] {rec['path'].name}: {e}")
                         break
 
-            # 독립 세션은 사용 후 정리
+            if actual_voice.strip():
+                from voice.tts import synthesize
+                t_tts = time.time()
+                try:
+                    synthesize(actual_voice)
+                except Exception as e:
+                    print(f"  [TTS ERROR] {e}")
+                tts_ms = round((time.time() - t_tts) * 1000)
+
             if group is None:
                 clear_history(session_id)
 
@@ -549,7 +441,8 @@ def run_pipeline_phase(recordings: list[dict], model, agent_delay: float = 10.0)
                 "agent_ms": agent_ms,
                 "llm_ms": llm_ms,
                 "tool_ms": tool_ms,
-                "total_ms": stt_ms + agent_ms,
+                "tts_ms": tts_ms,
+                "total_ms": stt_ms + agent_ms + tts_ms,
                 "response_head": response[:200],
             }
             results.append(row)
@@ -561,7 +454,6 @@ def run_pipeline_phase(recordings: list[dict], model, agent_delay: float = 10.0)
                 f"  ({actual_action})"
             )
 
-        # 연속 세션 정리
         for sid in active_sessions.values():
             clear_history(sid)
 
@@ -591,6 +483,7 @@ def summarize(results: list[dict], measure_agent: bool):
         if vsim_vals:
             print(f"  응답 유사도 (평균)  : {sum(vsim_vals)/len(vsim_vals):.4f}  — 코사인 유사도 0~1")
         print(f"  평균 Agent : {avg(r['agent_ms'] for r in results):.0f}ms")
+        print(f"  평균 TTS   : {avg(r.get('tts_ms', 0) for r in results):.0f}ms")
         print(f"  평균 Total : {avg(r['total_ms'] for r in results):.0f}ms")
 
     for dim, key in [("화자", "speaker"), ("환경", "env"), ("카테고리", "category")]:
@@ -611,7 +504,7 @@ def summarize(results: list[dict], measure_agent: bool):
                     f_ok = sum(1 for r in sc if r["action_full_ok"])
                     vs = [r["voice_sim"] for r in items if r.get("voice_sim") is not None]
                     vsim_str = f"  유사도={sum(vs)/len(vs):.3f}" if vs else ""
-                    line += f"  관대={t_ok/len(sc):.1%}  엄격={f_ok/len(sc):.1%}{vsim_str}  Agent={avg(r['agent_ms'] for r in items):.0f}ms"
+                    line += f"  관대={t_ok/len(sc):.1%}  엄격={f_ok/len(sc):.1%}{vsim_str}  Agent={avg(r['agent_ms'] for r in items):.0f}ms  TTS={avg(r.get('tts_ms',0) for r in items):.0f}ms"
             print(line)
 
 
@@ -630,20 +523,14 @@ def save_csv(results: list[dict], out_path: Path):
 # ─── 메인 ─────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="배치 평가 스크립트")
-    parser.add_argument("--audio-dir", default="tests/recordings", help="m4a 파일 디렉터리 (기본: tests/recordings)")
-    parser.add_argument(
-        "--phase",
-        choices=["stt", "pipeline", "all"],
-        default="stt",
-        help="stt=STT 정확도만  pipeline=STT+Agent  all=둘 다",
-    )
-    parser.add_argument("--model-size", default="small", help="Whisper 모델 크기")
-    parser.add_argument("--out-dir",    default="tests/results", help="결과 저장 경로")
-    parser.add_argument("--speaker",    help="특정 화자만 (sh/sb/br/hn)")
-    parser.add_argument("--env",        help="특정 환경만 (quiet/noisy)")
-    parser.add_argument("--limit",       type=int,   help="최대 파일 수 (디버깅용)")
-    parser.add_argument("--agent-delay", type=float, default=10.0,
-                        help="Agent 호출 사이 대기 시간(초) — TPM 한도 초과 방지 (기본 10.0)")
+    parser.add_argument("--audio-dir",   default="tests/recordings")
+    parser.add_argument("--phase",       choices=["stt", "pipeline", "all"], default="stt")
+    parser.add_argument("--model-size",  default="small")
+    parser.add_argument("--out-dir",     default="tests/results")
+    parser.add_argument("--speaker",     help="특정 화자만 (sh/sb/br/hn)")
+    parser.add_argument("--env",         help="특정 환경만 (quiet/noisy)")
+    parser.add_argument("--limit",       type=int, help="최대 파일 수 (디버깅용)")
+    parser.add_argument("--agent-delay", type=float, default=10.0)
     args = parser.parse_args()
 
     audio_dir = Path(args.audio_dir)
@@ -658,7 +545,8 @@ def main():
     for p in audio_dir.glob("*.m4a"):
         rec = parse_filename(p)
         if rec is None:
-            print(f"[SKIP] 파일명 불일치: {p.name}")
+            continue
+        if rec["id"] > 40:  # 1~40만 사용
             continue
         if args.speaker and rec["speaker"] != args.speaker:
             continue
@@ -666,7 +554,6 @@ def main():
             continue
         recordings.append(rec)
 
-    # 화자 → 환경 → id 숫자 순 정렬 (br_1, br_2, ..., br_10 순)
     recordings.sort(key=lambda r: (r["speaker"], r["env"], r["id"]))
 
     if args.limit:

@@ -50,6 +50,7 @@ selenium
 sentence-transformers
 shellingham==1.5.4
 silero-vad==6.2.1
+torchaudio==2.8.0
 sounddevice==0.5.5
 starlette==0.52.1
 sympy==1.14.0

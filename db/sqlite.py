@@ -155,8 +155,10 @@ def get_cart(session_id: str):
     rows = conn.execute("""
         SELECT c.*, m.name, m.img_url,
                dm.name as drink_name,
+               dm.price as drink_price,
                do.extra_price as drink_extra_price,
                sm.name as side_name,
+               sm.price as side_price,
                so.extra_price as side_extra_price
         FROM cart c
         JOIN menu m ON c.menu_id = m.id

@@ -128,14 +128,14 @@ def get_set_info(burger_name: str) -> str:
     _, set_price = set_menu
 
     cur.execute("""
-        SELECT m.name, o.extra_price FROM options o
+        SELECT DISTINCT m.name, o.extra_price FROM options o
         JOIN menu m ON o.menu_id = m.id
         WHERE o.option_type = '드링크'
     """)
     drinks = [f"{name}({'+' + str(ep) + '원' if ep else '기본'})" for name, ep in cur.fetchall()]
 
     cur.execute("""
-        SELECT m.name, o.extra_price FROM options o
+        SELECT DISTINCT m.name, o.extra_price FROM options o
         JOIN menu m ON o.menu_id = m.id
         WHERE o.option_type = '사이드'
     """)
@@ -357,7 +357,7 @@ def get_menu_info(name: str) -> str:
     return "\n".join(result_lines)
 
 
-def search_menu_logic(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], spicy_level: int = None, limit: int = 3):
+def search_menu_logic(query: str = "", category: str = None, badge: str = None, exclude: list[str] = [], offset: int = 0, exclude_names: list[str] = [], spicy_level: int = None, limit: int = 3):
     exclude = _expand_exclude(exclude) if exclude else []
 
     def build_spicy_clause():
@@ -447,11 +447,26 @@ def search_menu_logic(query: str = "", category: str = None, badge: str = None, 
         and spicy_ok(doc)
         and badge_ok(doc)
     ]
+
+    # 쿼리 키워드가 일부 결과에 포함된 경우, 포함된 결과만 반환
+    # (예: "새우 패티" → 결과 중 "새우"가 포함된 것만 통과)
+    query_words = [w for w in query.split() if len(w) >= 2]
+    expanded_words = set(query_words)
+    for w in query_words:
+        expanded_words.update(_SYNONYMS.get(w, []))
+    filter_terms = [w for w in expanded_words
+                    if any(w in doc.page_content for doc, _ in merged)]
+    if filter_terms:
+        keyword_filtered = [(doc, score) for doc, score in merged
+                            if any(term in doc.page_content for term in filter_terms)]
+        if keyword_filtered:
+            merged = keyword_filtered
+
     return [(doc.page_content.split("\n")[0].replace("메뉴명:", "").strip(), round(score, 4)) for doc, score in merged[offset:offset + limit]]
 
 
 @tool
-def search_menu(query: str = "", category: str = None, badge: str = None, exclude: list = [], offset: int = 0, exclude_names: list = [], spicy_level: int = None, limit: int = 3) -> str:
+def search_menu(query: str = "", category: str = None, badge: str = None, exclude: list[str] = [], offset: int = 0, exclude_names: list[str] = [], spicy_level: int = None, limit: int = 3) -> str:
     """사용자 요청에 맞는 메뉴를 검색한다. 메뉴 추천 또는 어떤 메뉴가 있는지 물어볼 때만 사용하라.
 
     - query: 재료, 맛, 특징 등 검색 의도 전체. 유사어도 포함.
